@@ -1,8 +1,8 @@
-# break
+# breakrs
 
 A simple, ergonomic CLI timer for taking breaks. Set natural language reminders with flexible syntax, get desktop notifications, and never miss a break again.
 
-Why break? Because typing "break 15m stretch" or "break go outside one hour 30mins" and having everything handled automatically is the quick and easy standard we should have.
+Why breakrs? Because typing "breakrs 15m stretch" or "breakrs go outside one hour 30mins" and having everything handled automatically is the quick and easy standard we should have.
 No need for watches, phones, calendars, sticky notes, guis, bloated apps, etc. No syntax, no manual conversions and no handling. No configs or setup. No learning curve.
 Type how you think and a notification pops up when you need it to. That's why.
 
@@ -10,13 +10,13 @@ Type how you think and a notification pops up when you need it to. That's why.
 
 - **Natural time parsing**: `5m`, `1h30m`, `1:30:45`, `one minute`, or mix them all: `1h 2:30 five seconds reminder`
 - **Number word support**: Type `five minutes`, `twenty seconds`, `one hour` - fully case-insensitive
-- **Flexible flag placement**: Put flags anywhere - `break 5m coffee --urgent` or `break --urgent 5m coffee`
+- **Flexible flag placement**: Put flags anywhere - `breakrs 5m coffee --urgent` or `break --urgent 5m coffee`
 - **Combined short flags**: Use `-usr` instead of `-u -s -r`
 - **Recurring timers**: Automatically repeat with `--recurring`
 - **Priority notifications**: Mark important breaks as `--urgent`
 - **Sound alerts**: Add `--sound` to play notification sounds
 - **History tracking**: See your last 20 completed timers
-- **Command aliases**: Type `break l` instead of `break list`
+- **Command aliases**: Type `breakrs l` instead of `breakrs list`
 - **Auto-recovery**: Daemon automatically restarts after reboot
 - **File locking**: Safe concurrent access, no database corruption
 
@@ -25,16 +25,16 @@ Type how you think and a notification pops up when you need it to. That's why.
 ### From Source
 
 ```bash
-git clone <https://github.com/sqrew/break>
-cd break
+git clone <https://github.com/sqrew/breakrs>
+cd breakrs
 cargo build --release
-sudo cp target/release/break /usr/local/bin/
+sudo cp target/release/breakrs /usr/local/bin/
 ```
 
 ### From crates.io
 
 ```
-cargo install break
+cargo install breakrs
 ```
 
 ### Platform Support
@@ -56,104 +56,104 @@ cargo install break
 
 ```bash
 # Simple format
-break 5m Get coffee
-break 1h Meeting reminder
-break 30s Quick stretch
+breakrs 5m Get coffee
+breakrs 1h Meeting reminder
+breakrs 30s Quick stretch
 
 # Colon format (h:m:s or m:s)
-break 1:30 Tea is ready
-break 1:30:45 Long break over
-break 0:30 Quick reminder
+breakrs 1:30 Tea is ready
+breakrs 1:30:45 Long break over
+breakrs 0:30 Quick reminder
 
 # Mixed formats
-break 1h 30m 2:15 Combined duration message
+breakrs 1h 30m 2:15 Combined duration message
 
 # Number words (case-insensitive)
-break one minute thirty seconds reminder
-break Five Minutes Get Coffee
-break two hours five minutes lunch break
+breakrs one minute thirty seconds reminder
+breakrs Five Minutes Get Coffee
+breakrs two hours five minutes lunch break
 ```
 
 ### Flags
 
 ```bash
 # Urgent/critical notification
-break --urgent 5m Important meeting
-break 5m Important meeting --urgent  # Flags work anywhere!
+breakrs --urgent 5m Important meeting
+breakrs 5m Important meeting --urgent  # Flags work anywhere!
 
 # Play sound
-break --sound 10m Timer with sound
+breakrs --sound 10m Timer with sound
 
 # Recurring timer (repeats after completion)
-break --recurring 1h Stretch every hour
-break -r 1h Stretch every hour  # Short form
+breakrs --recurring 1h Stretch every hour
+breakrs -r 1h Stretch every hour  # Short form
 
 # Combine flags
-break --urgent --sound --recurring 30m Drink water
-break -usr 30m Drink water  # Combined short flags
+breakrs --urgent --sound --recurring 30m Drink water
+breakrs -usr 30m Drink water  # Combined short flags
 ```
 
 ### Commands
 
 ```bash
 # List active timers
-break list
-break l        # Short alias
-break li       # Partial alias
+breakrs list
+breakrs l        # Short alias
+breakrs li       # Partial alias
 
 # Show recently completed timers (last 20)
-break history
-break h        # Short alias
+breakrs history
+breakrs h        # Short alias
 
 # Remove a specific timer by ID
-break remove 5
-break rm 5     # Short alias
+breakrs remove 5
+breakrs rm 5     # Short alias
 
 # Clear all active timers
-break clear
-break c        # Short alias
+breakrs clear
+breakrs c        # Short alias
 
 # Clear history
-break clear-history
-break ch       # Short alias
+breakrs clear-history
+breakrs ch       # Short alias
 
 # Check daemon status
-break status
-break s        # Short alias
+breakrs status
+breakrs s        # Short alias
 
 # Manually start daemon
-break daemon
-break d        # Short alias
+breakrs daemon
+breakrs d        # Short alias
 ```
 
 ### Examples
 
 ```bash
 # Set a 5-minute coffee break reminder
-break 5m Get coffee
+breakrs 5m Get coffee
 
 # Set an urgent 10-minute meeting reminder with sound
-break 10m Meeting in conference room -us
+breakrs 10m Meeting in conference room -us
 
 # Set a recurring hourly stretch reminder
-break -r 1h Stand up and stretch
+breakrs -r 1h Stand up and stretch
 
 # Create multiple timers
-break 5m First reminder
-break 10m Second reminder
-break 15m Third reminder
+breakrs 5m First reminder
+breakrs 10m Second reminder
+breakrs 15m Third reminder
 
 # List active timers
-break l
+breakrs l
 
 # Check history of completed timers
-break h
+breakrs h
 
 # Remove a specific timer
-break r 2
+breakrs r 2
 
 # Clear all timers
-break c
+breakrs c
 ```
 
 ## How It Works
@@ -165,7 +165,7 @@ break c
    - Flags can appear anywhere in the input
 
 2. **Database**: Stores active and completed timers in JSON
-   - Location: `~/.local/share/break/timers.json`
+   - Location: `~/.local/share/breakrs/timers.json`
    - File locking prevents corruption from concurrent access
    - Keeps last 20 completed timers in history
 
@@ -229,15 +229,15 @@ ps aux | grep notification
 
 If you see a corruption error, the message tells you how to fix it:
 ```bash
-rm ~/.local/share/break/timers.json
+rm ~/.local/share/breakrs/timers.json
 ```
 
 ### Daemon not running after reboot
 
 Any command will auto-restart the daemon if there are active timers:
 ```bash
-break list   # Will restart daemon if needed
-break status # Explicitly checks and restarts
+breakrs list   # Will restart daemon if needed
+breakrs status # Explicitly checks and restarts
 ```
 
 ## License
@@ -247,3 +247,18 @@ break status # Explicitly checks and restarts
 ## Contributing
 
 Contributions welcome! This tool is trying to follow the Unix philosophy: do one thing and do it well.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

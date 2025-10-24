@@ -32,7 +32,7 @@ enum Token {
 /// # Examples
 ///
 /// ```
-/// # use break::parser::parse_number_word;
+/// # use breakrs::parser::parse_number_word;
 /// assert_eq!(parse_number_word("one"), Some(1));
 /// assert_eq!(parse_number_word("twenty"), Some(20));
 /// assert_eq!(parse_number_word("fortyfive"), Some(45));
@@ -209,29 +209,35 @@ fn parse_colon_time(s: &str) -> Result<u64, ParseError> {
     match parts.len() {
         1 => {
             // Just seconds (though this shouldn't have a colon)
-            let secs: u64 = parts[0].parse()
+            let secs: u64 = parts[0]
+                .parse()
                 .map_err(|_| ParseError(format!("Invalid seconds: {}", parts[0])))?;
             Ok(secs)
         }
         2 => {
             // minutes:seconds
-            let mins: u64 = parts[0].parse()
+            let mins: u64 = parts[0]
+                .parse()
                 .map_err(|_| ParseError(format!("Invalid minutes: {}", parts[0])))?;
-            let secs: u64 = parts[1].parse()
+            let secs: u64 = parts[1]
+                .parse()
                 .map_err(|_| ParseError(format!("Invalid seconds: {}", parts[1])))?;
             Ok(mins * 60 + secs)
         }
         3 => {
             // hours:minutes:seconds
-            let hours: u64 = parts[0].parse()
+            let hours: u64 = parts[0]
+                .parse()
                 .map_err(|_| ParseError(format!("Invalid hours: {}", parts[0])))?;
-            let mins: u64 = parts[1].parse()
+            let mins: u64 = parts[1]
+                .parse()
                 .map_err(|_| ParseError(format!("Invalid minutes: {}", parts[1])))?;
-            let secs: u64 = parts[2].parse()
+            let secs: u64 = parts[2]
+                .parse()
                 .map_err(|_| ParseError(format!("Invalid seconds: {}", parts[2])))?;
             Ok(hours * 3600 + mins * 60 + secs)
         }
-        _ => Err(ParseError(format!("Invalid time format: {}", s)))
+        _ => Err(ParseError(format!("Invalid time format: {}", s))),
     }
 }
 
@@ -260,7 +266,7 @@ fn is_colon_time(s: &str) -> bool {
 /// # Examples
 ///
 /// ```
-/// # use break::parser::parse_input;
+/// # use breakrs::parser::parse_input;
 /// // Simple format
 /// let (duration, msg) = parse_input("5m get coffee").unwrap();
 /// assert_eq!(duration, 300); // 5 minutes in seconds

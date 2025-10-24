@@ -1,10 +1,10 @@
 [package]
-name = "break"
+name = "breakrs"
 version = "0.1.0"
 edition = "2024"
 authors = ["Nicholas Manson <nicholaspmanson@gmail.com>"]
 description = "A simple, ergonomic CLI timer for taking breaks"
-repository = "https://github.com/sqrew/break"
+repository = "https://github.com/sqrew/breakrs"
 license = "MIT"
 keywords = ["timer", "break", "reminder", "notification", "cli"]
 categories = ["command-line-utilities"]

@@ -117,7 +117,7 @@ impl Database {
     /// # Examples
     ///
     /// ```no_run
-    /// # use break::database::Database;
+    /// # use breakrs::database::Database;
     /// Database::with_transaction(|db| {
     ///     db.add_timer("Coffee break".to_string(), 300, false, false, false)?;
     ///     Ok(())
@@ -140,7 +140,7 @@ impl Database {
             .read(true)
             .write(true)
             .create(true)
-            .truncate(false)  // Don't truncate - we need to read existing data first
+            .truncate(false) // Don't truncate - we need to read existing data first
             .open(&path)?;
 
         FileExt::lock_exclusive(&file)?;
@@ -168,10 +168,7 @@ impl Database {
 
         // Save database
         let contents = serde_json::to_string_pretty(&db)?;
-        let file = OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .open(&path)?;
+        let file = OpenOptions::new().write(true).truncate(true).open(&path)?;
         let mut writer = std::io::BufWriter::new(&file);
         writer.write_all(contents.as_bytes())?;
         writer.flush()?;
@@ -224,11 +221,21 @@ impl Database {
     /// # Errors
     ///
     /// Returns an error if the duration exceeds 1 year (31,536,000 seconds).
-    pub fn add_timer(&mut self, message: String, duration_seconds: u64, urgent: bool, sound: bool, recurring: bool) -> Result<Timer, String> {
+    pub fn add_timer(
+        &mut self,
+        message: String,
+        duration_seconds: u64,
+        urgent: bool,
+        sound: bool,
+        recurring: bool,
+    ) -> Result<Timer, String> {
         // Validate duration is reasonable (max 1 year = 31,536,000 seconds)
         const MAX_DURATION_SECONDS: u64 = 365 * 24 * 60 * 60; // 1 year
         if duration_seconds > MAX_DURATION_SECONDS {
-            return Err(format!("Duration too large (max {} days)", MAX_DURATION_SECONDS / 86400));
+            return Err(format!(
+                "Duration too large (max {} days)",
+                MAX_DURATION_SECONDS / 86400
+            ));
         }
 
         let now = OffsetDateTime::now_utc();
@@ -379,8 +386,7 @@ impl Database {
     }
 
     fn db_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
-        let data_dir = dirs::data_dir()
-            .ok_or("Could not find data directory")?;
+        let data_dir = dirs::data_dir().ok_or("Could not find data directory")?;
         Ok(data_dir.join("break").join("timers.json"))
     }
 }
@@ -400,7 +406,9 @@ mod tests {
     #[test]
     fn test_add_timer() {
         let mut db = Database::new();
-        let timer = db.add_timer("Test".to_string(), 300, false, false, false).unwrap();
+        let timer = db
+            .add_timer("Test".to_string(), 300, false, false, false)
+            .unwrap();
 
         assert_eq!(timer.id, 1);
         assert_eq!(timer.message, "Test");
@@ -419,7 +427,13 @@ mod tests {
         assert!(result.is_ok());
 
         // Should fail above max duration
-        let result = db.add_timer("Too long".to_string(), max_duration + 1, false, false, false);
+        let result = db.add_timer(
+            "Too long".to_string(),
+            max_duration + 1,
+            false,
+            false,
+            false,
+        );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Duration too large"));
     }
@@ -427,7 +441,9 @@ mod tests {
     #[test]
     fn test_remove_timer() {
         let mut db = Database::new();
-        let timer = db.add_timer("Test".to_string(), 300, false, false, false).unwrap();
+        let timer = db
+            .add_timer("Test".to_string(), 300, false, false, false)
+            .unwrap();
 
         let removed = db.remove_timer(timer.id);
         assert!(removed.is_some());
@@ -442,7 +458,9 @@ mod tests {
     #[test]
     fn test_complete_timer() {
         let mut db = Database::new();
-        let timer = db.add_timer("Test".to_string(), 300, false, false, false).unwrap();
+        let timer = db
+            .add_timer("Test".to_string(), 300, false, false, false)
+            .unwrap();
 
         let completed = db.complete_timer(timer.id);
         assert!(completed.is_some());
@@ -454,7 +472,9 @@ mod tests {
     #[test]
     fn test_reset_timer() {
         let mut db = Database::new();
-        let timer = db.add_timer("Test".to_string(), 300, false, false, false).unwrap();
+        let timer = db
+            .add_timer("Test".to_string(), 300, false, false, false)
+            .unwrap();
         let original_due = timer.due_at;
 
         // Wait a tiny bit and reset
@@ -475,7 +495,9 @@ mod tests {
 
         // Add 25 timers and complete them all
         for i in 1..=25 {
-            let timer = db.add_timer(format!("Timer {}", i), 10, false, false, false).unwrap();
+            let timer = db
+                .add_timer(format!("Timer {}", i), 10, false, false, false)
+                .unwrap();
             db.complete_timer(timer.id);
         }
 
@@ -491,8 +513,10 @@ mod tests {
     #[test]
     fn test_clear_all() {
         let mut db = Database::new();
-        db.add_timer("Test 1".to_string(), 300, false, false, false).unwrap();
-        db.add_timer("Test 2".to_string(), 600, false, false, false).unwrap();
+        db.add_timer("Test 1".to_string(), 300, false, false, false)
+            .unwrap();
+        db.add_timer("Test 2".to_string(), 600, false, false, false)
+            .unwrap();
 
         assert_eq!(db.timers.len(), 2);
         db.clear_all();
@@ -518,7 +542,9 @@ mod tests {
     #[test]
     fn test_clear_history() {
         let mut db = Database::new();
-        let timer = db.add_timer("Test".to_string(), 300, false, false, false).unwrap();
+        let timer = db
+            .add_timer("Test".to_string(), 300, false, false, false)
+            .unwrap();
         db.complete_timer(timer.id);
 
         assert_eq!(db.history.len(), 1);
@@ -531,10 +557,13 @@ mod tests {
         let mut db = Database::new();
 
         // Add a timer that's already expired (0 seconds)
-        let expired_timer = db.add_timer("Expired".to_string(), 0, false, false, false).unwrap();
+        let expired_timer = db
+            .add_timer("Expired".to_string(), 0, false, false, false)
+            .unwrap();
 
         // Add a future timer
-        db.add_timer("Future".to_string(), 3600, false, false, false).unwrap();
+        db.add_timer("Future".to_string(), 3600, false, false, false)
+            .unwrap();
 
         // Small delay to ensure the 0-second timer is definitely expired
         std::thread::sleep(std::time::Duration::from_millis(10));
@@ -549,13 +578,17 @@ mod tests {
         let mut db = Database::new();
 
         // Test all flags
-        let timer = db.add_timer("Urgent sound recurring".to_string(), 300, true, true, true).unwrap();
+        let timer = db
+            .add_timer("Urgent sound recurring".to_string(), 300, true, true, true)
+            .unwrap();
         assert!(timer.urgent);
         assert!(timer.sound);
         assert!(timer.recurring);
 
         // Test default flags
-        let timer = db.add_timer("Default".to_string(), 300, false, false, false).unwrap();
+        let timer = db
+            .add_timer("Default".to_string(), 300, false, false, false)
+            .unwrap();
         assert!(!timer.urgent);
         assert!(!timer.sound);
         assert!(!timer.recurring);
@@ -565,9 +598,15 @@ mod tests {
     fn test_sequential_ids() {
         let mut db = Database::new();
 
-        let timer1 = db.add_timer("First".to_string(), 300, false, false, false).unwrap();
-        let timer2 = db.add_timer("Second".to_string(), 300, false, false, false).unwrap();
-        let timer3 = db.add_timer("Third".to_string(), 300, false, false, false).unwrap();
+        let timer1 = db
+            .add_timer("First".to_string(), 300, false, false, false)
+            .unwrap();
+        let timer2 = db
+            .add_timer("Second".to_string(), 300, false, false, false)
+            .unwrap();
+        let timer3 = db
+            .add_timer("Third".to_string(), 300, false, false, false)
+            .unwrap();
 
         assert_eq!(timer1.id, 1);
         assert_eq!(timer2.id, 2);
@@ -575,7 +614,9 @@ mod tests {
 
         // Even after removing, next ID should continue
         db.remove_timer(timer2.id);
-        let timer4 = db.add_timer("Fourth".to_string(), 300, false, false, false).unwrap();
+        let timer4 = db
+            .add_timer("Fourth".to_string(), 300, false, false, false)
+            .unwrap();
         assert_eq!(timer4.id, 4);
     }
 }

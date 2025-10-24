@@ -8,7 +8,7 @@ mod parser;
 use database::Database;
 
 #[derive(Parser)]
-#[command(name = "break")]
+#[command(name = "breakrs")]
 #[command(about = "A simple CLI timer for breaks", long_about = None)]
 struct Cli {
     #[command(subcommand)]

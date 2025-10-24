@@ -41,18 +41,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Flags can appear anywhere in command input
 
 #### Commands
-- `break <duration> <message>`: Create a timer
-- `break list` / `l`: List active timers with time remaining
-- `break history` / `h`: Show last 20 completed timers
-- `break remove <id>` / `rm`: Remove a specific timer
-- `break clear` / `c`: Clear all active timers
-- `break clear-history` / `ch`: Clear timer history
-- `break status` / `s`: Check daemon status
-- `break daemon` / `d`: Manually start daemon
+- `breakrs <duration> <message>`: Create a timer
+- `breakrs list` / `l`: List active timers with time remaining
+- `breakrs history` / `h`: Show last 20 completed timers
+- `breakrs remove <id>` / `rm`: Remove a specific timer
+- `breakrs clear` / `c`: Clear all active timers
+- `breakrs clear-history` / `ch`: Clear timer history
+- `breakrs status` / `s`: Check daemon status
+- `breakrs daemon` / `d`: Manually start daemon
 - Progressive alias matching for all commands (e.g., `l`, `li`, `lis` for `list`)
 
 #### Storage & Persistence
-- JSON-based database at `~/.local/share/break/timers.json`
+- JSON-based database at `~/.local/share/breakrs/timers.json`
 - File locking (fs2) to prevent corruption from concurrent access
 - Transaction-based updates for atomic database modifications
 - History tracking (last 20 completed timers)
@@ -63,7 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dynamic sleep intervals based on next timer due time
 - Auto-recovery: daemon restarts when running any command if timers exist
 - Automatic exit when no active timers remain
-- PID file management at `~/.local/share/break/daemon.pid`
+- PID file management at `~/.local/share/breakrs/daemon.pid`
 
 #### Notifications
 - Desktop notifications via notify-rust
@@ -96,4 +96,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - UUID generation for unique timer identification
 - Sequential numeric IDs for user-friendly reference
 
-[0.1.0]: https://github.com/sqrew/break/releases/tag/v0.1.0
+[0.1.0]: https://github.com/sqrew/breakrs/releases/tag/v0.1.0
