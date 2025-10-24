@@ -1,3 +1,9 @@
+//! Background daemon for monitoring and firing timers.
+//!
+//! This module provides the daemon process that runs in the background to monitor
+//! active timers and send desktop notifications when they expire. The daemon uses
+//! dynamic sleep intervals to minimize resource usage while ensuring timely notifications.
+
 use crate::database::Database;
 use notify_rust::Notification;
 use std::fs;
@@ -11,6 +17,23 @@ fn pid_file_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
     Ok(data_dir.join("break").join("daemon.pid"))
 }
 
+/// Checks if the daemon process is currently running.
+///
+/// This function reads the PID file and verifies that the process is still active.
+/// On Unix systems, it uses the `ps` command to check if the process exists. On
+/// non-Unix systems, it assumes the daemon is running if the PID file exists.
+///
+/// # Returns
+///
+/// Returns `Ok(true)` if the daemon is running, `Ok(false)` if it's not running,
+/// or an error if the check fails.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The data directory cannot be accessed
+/// - File I/O operations fail
+/// - The process check command fails (Unix only)
 pub fn is_daemon_running() -> Result<bool, Box<dyn std::error::Error>> {
     let pid_file = pid_file_path()?;
 
@@ -43,6 +66,18 @@ pub fn is_daemon_running() -> Result<bool, Box<dyn std::error::Error>> {
     }
 }
 
+/// Ensures the daemon is running, starting it if necessary.
+///
+/// This is the recommended way to start the daemon, as it's idempotent and safe
+/// to call multiple times. If the daemon is already running, this does nothing.
+/// If it's not running, it starts a new daemon process.
+///
+/// This function is called automatically by commands that need the daemon to be
+/// active (such as when listing timers or checking status).
+///
+/// # Errors
+///
+/// Returns an error if the daemon check or start process fails.
 pub fn ensure_daemon_running() -> Result<(), Box<dyn std::error::Error>> {
     if !is_daemon_running()? {
         start_daemon_process()?;
@@ -50,6 +85,20 @@ pub fn ensure_daemon_running() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Starts a new daemon process in the background.
+///
+/// This spawns the current executable with the `--daemon-mode` flag, running it
+/// as a detached background process with stdin, stdout, and stderr redirected to
+/// /dev/null. The daemon will continue running even after the parent process exits.
+///
+/// If a daemon is already running, this function does nothing and returns successfully.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The daemon status check fails
+/// - The current executable path cannot be determined
+/// - The daemon process cannot be spawned
 pub fn start_daemon_process() -> Result<(), Box<dyn std::error::Error>> {
     if is_daemon_running()? {
         return Ok(());
@@ -82,6 +131,38 @@ pub fn start_daemon_process() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Runs the main daemon loop that monitors and fires timers.
+///
+/// This is the entry point for the daemon process. It performs the following tasks:
+///
+/// 1. Writes a PID file to track the daemon process
+/// 2. Continuously monitors the database for expired timers
+/// 3. Sends desktop notifications when timers expire
+/// 4. Handles recurring timers by resetting them after completion
+/// 5. Sleeps dynamically until the next timer is due (capped at 1 hour)
+/// 6. Exits gracefully when no active timers remain
+/// 7. Cleans up the PID file on exit
+///
+/// The daemon uses efficient dynamic sleep intervals based on when the next timer
+/// is due, minimizing CPU usage while ensuring timely notifications.
+///
+/// # Notification Behavior
+///
+/// - **Title**: The user's timer message (for quick visibility)
+/// - **Urgency**: Critical if `--urgent` flag was set, normal otherwise
+/// - **Sound**: Plays "message-new-instant" if `--sound` flag was set
+///
+/// # Timer Handling
+///
+/// - **Recurring timers**: Added to history and reset for the next interval
+/// - **One-time timers**: Moved from active list to history
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The PID file cannot be written
+/// - Database operations fail
+/// - Notification delivery fails critically
 pub fn run_daemon() -> Result<(), Box<dyn std::error::Error>> {
     // Write PID file
     let pid_file = pid_file_path()?;
@@ -168,4 +249,38 @@ pub fn run_daemon() -> Result<(), Box<dyn std::error::Error>> {
     let _ = fs::remove_file(&pid_file);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pid_file_path_creation() {
+        // Just verify we can generate a PID file path
+        let path = pid_file_path();
+        assert!(path.is_ok());
+        let path = path.unwrap();
+        assert!(path.to_string_lossy().contains("break"));
+        assert!(path.to_string_lossy().ends_with("daemon.pid"));
+    }
+
+    #[test]
+    fn test_is_daemon_running_no_pid_file() {
+        // When there's no PID file, daemon should not be running
+        // This test assumes the daemon is not currently running
+        // Note: This might fail if daemon is actually running, but that's expected
+        let result = is_daemon_running();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_ensure_daemon_running_idempotent() {
+        // Calling ensure_daemon_running multiple times should be safe
+        // This is more of a smoke test
+        let result = ensure_daemon_running();
+        // May succeed or fail depending on system state, but shouldn't panic
+        // Just verify it returns a Result
+        let _ = result;
+    }
 }

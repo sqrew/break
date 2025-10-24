@@ -1,3 +1,9 @@
+//! Duration and input parsing for break timers.
+//!
+//! This module provides flexible parsing of natural language duration input,
+//! supporting multiple formats including standard time units (`5m`, `1h30m`),
+//! colon-formatted times (`5:30`, `1:30:45`), and mixed formats.
+
 use std::error::Error;
 use std::fmt;
 
@@ -145,11 +151,49 @@ fn is_colon_time(s: &str) -> bool {
     s.chars().all(|c| c.is_ascii_digit() || c == ':')
 }
 
-/// Parse input that mixes duration components with message text
-/// Returns (duration_in_seconds, message)
-/// Examples:
-///   "15mins 1 hour 20s take a break" -> (4520, "take a break")
-///   "1:30:45 coffee break" -> (5445, "coffee break")
+/// Parses user input that mixes duration components with message text.
+///
+/// This function accepts flexible, natural language input for specifying break timers.
+/// It extracts all duration components (standard units and colon-formatted times) and
+/// treats remaining text as the timer message.
+///
+/// # Supported Duration Formats
+///
+/// - **Standard units**: `5m`, `1h`, `30s`, `5minutes`, `1hour`, `30seconds`
+/// - **Colon format**: `5:30` (5 min 30 sec), `1:30:45` (1 hr 30 min 45 sec)
+/// - **Mixed formats**: `1h 30m 2:15 message` combines all duration types
+///
+/// # Examples
+///
+/// ```
+/// # use break::parser::parse_input;
+/// // Simple format
+/// let (duration, msg) = parse_input("5m get coffee").unwrap();
+/// assert_eq!(duration, 300); // 5 minutes in seconds
+/// assert_eq!(msg, "get coffee");
+///
+/// // Colon format
+/// let (duration, msg) = parse_input("1:30:45 long break").unwrap();
+/// assert_eq!(duration, 5445); // 1h 30m 45s in seconds
+///
+/// // Mixed formats
+/// let (duration, msg) = parse_input("15mins 1 hour 20s take a break").unwrap();
+/// assert_eq!(duration, 4520); // Sum of all durations
+/// assert_eq!(msg, "take a break");
+/// ```
+///
+/// # Returns
+///
+/// - `Ok((u64, String))` - Duration in seconds and the message text
+/// - `Err(ParseError)` - If no valid duration found, no message found, or invalid format
+///
+/// # Errors
+///
+/// Returns `ParseError` if:
+/// - No duration components found in input
+/// - No message text found (duration only)
+/// - Invalid time unit or format
+/// - Empty input
 pub fn parse_input(input: &str) -> Result<(u64, String), ParseError> {
     // First, scan for colon-formatted times
     let words: Vec<&str> = input.split_whitespace().collect();
