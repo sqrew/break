@@ -38,14 +38,25 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// List all active timers
+    #[command(aliases = ["l", "li", "lis"])]
     List,
+    /// Show recently completed timers
+    #[command(aliases = ["h", "hi", "his", "hist", "histo", "histor"])]
+    History,
     /// Remove a timer by ID
+    #[command(aliases = ["r", "rm", "rem", "remo", "remov"])]
     Remove { id: u32 },
     /// Clear all timers
+    #[command(aliases = ["c", "cl", "cle", "clea",])]
     Clear,
+    /// Clear history
+    #[command(aliases = ["ch", "clh", "clear-h", "clear-hi", "clear-his", "clear-hist", "clear-histo", "clear-histor"])]
+    ClearHistory,
     /// Show daemon status
+    #[command(aliases = ["s", "st", "sta", "stat", "statu", "stats"])]
     Status,
     /// Manually start the daemon
+    #[command(aliases = ["d", "da", "dae", "daem", "daemo"])]
     Daemon,
 }
 
@@ -63,8 +74,10 @@ fn main() {
 
     let result = match cli.command {
         Some(Commands::List) => list_timers(),
+        Some(Commands::History) => show_history(),
         Some(Commands::Remove { id }) => remove_timer(id),
         Some(Commands::Clear) => clear_timers(),
+        Some(Commands::ClearHistory) => clear_history(),
         Some(Commands::Status) => show_status(),
         Some(Commands::Daemon) => start_daemon(),
         None => {
@@ -82,7 +95,8 @@ fn main() {
             }
 
             // Extract flags from input if present
-            let (input_cleaned, urgent_flag, sound_flag, recurring_flag) = extract_flags_from_input(&cli.input);
+            let (input_cleaned, urgent_flag, sound_flag, recurring_flag) =
+                extract_flags_from_input(&cli.input);
 
             // Combine with CLI flags (either source works)
             let urgent = cli.urgent || urgent_flag;
@@ -141,9 +155,11 @@ fn add_timer(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (duration_seconds, message) = parser::parse_input(input)?;
 
-    let mut db = Database::load()?;
-    let timer = db.add_timer(message.clone(), duration_seconds, urgent, sound, recurring);
-    db.save()?;
+    // Use transaction to ensure atomic load-modify-save
+    let timer = Database::with_transaction(|db| {
+        db.add_timer(message.clone(), duration_seconds, urgent, sound, recurring)
+            .map_err(|e| format!("Failed to add timer: {}", e).into())
+    })?;
 
     print!(
         "Timer #{} set for \"{}\" ({} seconds)",
@@ -165,12 +181,31 @@ fn add_timer(
         print!("]");
     }
     println!();
-    println!(
-        "Break will notify you at {}",
-        timer
-            .due_at
-            .format(&time::format_description::well_known::Rfc3339)?
-    );
+
+    // Show relative time (e.g., "in 5 minutes")
+    let now = time::OffsetDateTime::now_utc();
+    let duration_until = timer.due_at - now;
+    let seconds = duration_until.whole_seconds();
+
+    if seconds > 0 {
+        let hours = seconds / 3600;
+        let minutes = (seconds % 3600) / 60;
+        let secs = seconds % 60;
+
+        print!("Break will notify you in ");
+        if hours > 0 {
+            print!("{}h ", hours);
+        }
+        if minutes > 0 || hours > 0 {
+            print!("{}m ", minutes);
+        }
+        if hours == 0 && minutes < 5 {
+            print!("{}s", secs);
+        }
+        println!();
+    } else {
+        println!("Break notification is ready!");
+    }
 
     // Ensure daemon is running
     daemon::ensure_daemon_running()?;
@@ -185,6 +220,9 @@ fn list_timers() -> Result<(), Box<dyn std::error::Error>> {
         println!("No active timers");
         return Ok(());
     }
+
+    // Ensure daemon is running if there are active timers
+    daemon::ensure_daemon_running()?;
 
     println!("Active timers:");
     for timer in &db.timers {
@@ -248,10 +286,9 @@ fn list_timers() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn remove_timer(id: u32) -> Result<(), Box<dyn std::error::Error>> {
-    let mut db = Database::load()?;
+    let timer_opt = Database::with_transaction(|db| Ok(db.remove_timer(id)))?;
 
-    if let Some(timer) = db.remove_timer(id) {
-        db.save()?;
+    if let Some(timer) = timer_opt {
         println!("Removed timer #{}: \"{}\"", timer.id, timer.message);
     } else {
         println!("Timer #{} not found", id);
@@ -260,24 +297,96 @@ fn remove_timer(id: u32) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn show_history() -> Result<(), Box<dyn std::error::Error>> {
+    let db = Database::load()?;
+
+    if db.history.is_empty() {
+        println!("No completed timers in history");
+        return Ok(());
+    }
+
+    println!("Recently completed timers:");
+    for timer in &db.history {
+        let now = time::OffsetDateTime::now_utc();
+        let elapsed = now - timer.due_at;
+        let elapsed_secs = elapsed.whole_seconds().abs();
+
+        let hours = elapsed_secs / 3600;
+        let minutes = (elapsed_secs % 3600) / 60;
+
+        print!("  #{}: \"{}\" - completed ", timer.id, timer.message);
+        if hours > 0 {
+            print!("{}h ", hours);
+        }
+        if minutes > 0 || hours > 0 {
+            print!("{}m ", minutes);
+        } else {
+            print!("< 1m ");
+        }
+        print!("ago");
+
+        // Show flags
+        if timer.urgent || timer.sound || timer.recurring {
+            print!(" [");
+            let mut flags = Vec::new();
+            if timer.urgent {
+                flags.push("urgent");
+            }
+            if timer.sound {
+                flags.push("sound");
+            }
+            if timer.recurring {
+                flags.push("recurring");
+            }
+            print!("{}", flags.join(", "));
+            print!("]");
+        }
+        println!();
+    }
+
+    Ok(())
+}
+
 fn clear_timers() -> Result<(), Box<dyn std::error::Error>> {
-    let mut db = Database::load()?;
-    let count = db.timers.len();
-    db.clear_all();
-    db.save()?;
+    let count = Database::with_transaction(|db| {
+        let count = db.timers.len();
+        db.clear_all();
+        Ok(count)
+    })?;
 
     println!("Cleared {} timer(s)", count);
 
     Ok(())
 }
 
+fn clear_history() -> Result<(), Box<dyn std::error::Error>> {
+    let count = Database::with_transaction(|db| {
+        let count = db.history.len();
+        db.clear_history();
+        Ok(count)
+    })?;
+
+    println!("Cleared {} completed timer(s) from history", count);
+
+    Ok(())
+}
+
 fn show_status() -> Result<(), Box<dyn std::error::Error>> {
+    let db = Database::load()?;
+    let timer_count = db.timers.len();
+
     if daemon::is_daemon_running()? {
         println!("Daemon is running");
-        let db = Database::load()?;
-        println!("Active timers: {}", db.timers.len());
+        println!("Active timers: {}", timer_count);
     } else {
         println!("Daemon is not running");
+        if timer_count > 0 {
+            println!("Active timers: {} (restarting daemon...)", timer_count);
+            daemon::ensure_daemon_running()?;
+            println!("Daemon restarted");
+        } else {
+            println!("Active timers: 0");
+        }
     }
 
     Ok(())

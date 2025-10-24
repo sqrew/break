@@ -59,7 +59,18 @@ fn tokenize(input: &str) -> Result<Vec<Token>, ParseError> {
                 in_number = false;
             }
         } else {
-            return Err(ParseError(format!("Invalid character: '{}'", ch)));
+            // Allow other characters as part of message text (emoji, punctuation, etc.)
+            // If we're in a number, save it first
+            if in_number && !current.is_empty() {
+                let num: u64 = current
+                    .parse()
+                    .map_err(|_| ParseError(format!("Invalid number: {}", current)))?;
+                tokens.push(Token::Number(num));
+                current.clear();
+                in_number = false;
+            }
+            // Add character to current token (will be treated as Unit/message text)
+            current.push(ch);
         }
     }
 

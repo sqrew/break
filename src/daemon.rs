@@ -98,9 +98,10 @@ pub fn run_daemon() -> Result<(), Box<dyn std::error::Error>> {
 
         for timer in &expired {
             // Build notification with appropriate settings
+            // Use the timer message as the title for immediate visibility
             let notification = Notification::new()
-                .summary("Break Timer")
-                .body(&timer.message)
+                .summary(&timer.message)
+                .body("Break timer completed")
                 .urgency(if timer.urgent {
                     notify_rust::Urgency::Critical
                 } else {
@@ -119,11 +120,12 @@ pub fn run_daemon() -> Result<(), Box<dyn std::error::Error>> {
 
             // Handle recurring vs one-time timers
             if timer.recurring {
-                // Reset the timer for the next interval
+                // Add to history and reset the timer for the next interval
+                db.add_to_history(timer.clone());
                 db.reset_timer(timer.id);
             } else {
-                // Remove the expired timer
-                db.remove_timer(timer.id);
+                // Complete the timer (moves to history)
+                db.complete_timer(timer.id);
             }
         }
 
