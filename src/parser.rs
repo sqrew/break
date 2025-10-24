@@ -24,6 +24,90 @@ enum Token {
     Unit(String),
 }
 
+/// Parses a word into its numeric equivalent if it's a number word.
+///
+/// Supports common number words from zero to sixty, which covers most
+/// practical time specifications.
+///
+/// # Examples
+///
+/// ```
+/// # use break::parser::parse_number_word;
+/// assert_eq!(parse_number_word("one"), Some(1));
+/// assert_eq!(parse_number_word("twenty"), Some(20));
+/// assert_eq!(parse_number_word("fortyfive"), Some(45));
+/// assert_eq!(parse_number_word("not_a_number"), None);
+/// ```
+fn parse_number_word(word: &str) -> Option<u64> {
+    match word {
+        // 0-19
+        "zero" => Some(0),
+        "one" => Some(1),
+        "two" => Some(2),
+        "three" => Some(3),
+        "four" => Some(4),
+        "five" => Some(5),
+        "six" => Some(6),
+        "seven" => Some(7),
+        "eight" => Some(8),
+        "nine" => Some(9),
+        "ten" => Some(10),
+        "eleven" => Some(11),
+        "twelve" => Some(12),
+        "thirteen" => Some(13),
+        "fourteen" => Some(14),
+        "fifteen" => Some(15),
+        "sixteen" => Some(16),
+        "seventeen" => Some(17),
+        "eighteen" => Some(18),
+        "nineteen" => Some(19),
+        // Tens
+        "twenty" => Some(20),
+        "thirty" => Some(30),
+        "forty" => Some(40),
+        "fifty" => Some(50),
+        "sixty" => Some(60),
+        // Common compounds (no space)
+        "twentyone" => Some(21),
+        "twentytwo" => Some(22),
+        "twentythree" => Some(23),
+        "twentyfour" => Some(24),
+        "twentyfive" => Some(25),
+        "twentysix" => Some(26),
+        "twentyseven" => Some(27),
+        "twentyeight" => Some(28),
+        "twentynine" => Some(29),
+        "thirtyone" => Some(31),
+        "thirtytwo" => Some(32),
+        "thirtythree" => Some(33),
+        "thirtyfour" => Some(34),
+        "thirtyfive" => Some(35),
+        "thirtysix" => Some(36),
+        "thirtyseven" => Some(37),
+        "thirtyeight" => Some(38),
+        "thirtynine" => Some(39),
+        "fortyone" => Some(41),
+        "fortytwo" => Some(42),
+        "fortythree" => Some(43),
+        "fortyfour" => Some(44),
+        "fortyfive" => Some(45),
+        "fortysix" => Some(46),
+        "fortyseven" => Some(47),
+        "fortyeight" => Some(48),
+        "fortynine" => Some(49),
+        "fiftyone" => Some(51),
+        "fiftytwo" => Some(52),
+        "fiftythree" => Some(53),
+        "fiftyfour" => Some(54),
+        "fiftyfive" => Some(55),
+        "fiftysix" => Some(56),
+        "fiftyseven" => Some(57),
+        "fiftyeight" => Some(58),
+        "fiftynine" => Some(59),
+        _ => None,
+    }
+}
+
 fn tokenize(input: &str) -> Result<Vec<Token>, ParseError> {
     let input = input.trim().to_lowercase();
     let mut tokens = Vec::new();
@@ -59,7 +143,12 @@ fn tokenize(input: &str) -> Result<Vec<Token>, ParseError> {
                         .map_err(|_| ParseError(format!("Invalid number: {}", current)))?;
                     tokens.push(Token::Number(num));
                 } else {
-                    tokens.push(Token::Unit(current.clone()));
+                    // Check if this is a number word before treating as unit
+                    if let Some(num) = parse_number_word(&current) {
+                        tokens.push(Token::Number(num));
+                    } else {
+                        tokens.push(Token::Unit(current.clone()));
+                    }
                 }
                 current.clear();
                 in_number = false;
@@ -88,7 +177,12 @@ fn tokenize(input: &str) -> Result<Vec<Token>, ParseError> {
                 .map_err(|_| ParseError(format!("Invalid number: {}", current)))?;
             tokens.push(Token::Number(num));
         } else {
-            tokens.push(Token::Unit(current));
+            // Check if this is a number word before treating as unit
+            if let Some(num) = parse_number_word(&current) {
+                tokens.push(Token::Number(num));
+            } else {
+                tokens.push(Token::Unit(current));
+            }
         }
     }
 
@@ -472,5 +566,91 @@ mod tests {
         assert!(parse_input("5:30:45:10 message").is_err());
         // Non-numeric
         assert!(parse_input("5:3a message").is_err());
+    }
+
+    // Number word parsing tests
+    #[test]
+    fn test_number_words_basic() {
+        let (duration, message) = parse_input("one minute reminder").unwrap();
+        assert_eq!(duration, 60);
+        assert_eq!(message, "reminder");
+
+        let (duration, message) = parse_input("five minutes test").unwrap();
+        assert_eq!(duration, 300);
+        assert_eq!(message, "test");
+
+        let (duration, message) = parse_input("ten seconds go").unwrap();
+        assert_eq!(duration, 10);
+        assert_eq!(message, "go");
+    }
+
+    #[test]
+    fn test_number_words_teens() {
+        let (duration, message) = parse_input("fifteen minutes break").unwrap();
+        assert_eq!(duration, 900);
+        assert_eq!(message, "break");
+
+        let (duration, message) = parse_input("thirteen seconds timer").unwrap();
+        assert_eq!(duration, 13);
+        assert_eq!(message, "timer");
+    }
+
+    #[test]
+    fn test_number_words_tens() {
+        let (duration, message) = parse_input("twenty minutes reminder").unwrap();
+        assert_eq!(duration, 1200);
+        assert_eq!(message, "reminder");
+
+        let (duration, message) = parse_input("thirty seconds go").unwrap();
+        assert_eq!(duration, 30);
+        assert_eq!(message, "go");
+
+        let (duration, message) = parse_input("fifty minutes lunch").unwrap();
+        assert_eq!(duration, 3000);
+        assert_eq!(message, "lunch");
+    }
+
+    #[test]
+    fn test_number_words_compounds() {
+        let (duration, message) = parse_input("twentyfive minutes break").unwrap();
+        assert_eq!(duration, 1500);
+        assert_eq!(message, "break");
+
+        let (duration, message) = parse_input("fortyfive seconds timer").unwrap();
+        assert_eq!(duration, 45);
+        assert_eq!(message, "timer");
+    }
+
+    #[test]
+    fn test_number_words_mixed_with_digits() {
+        let (duration, message) = parse_input("one hour 30 minutes break").unwrap();
+        assert_eq!(duration, 5400);
+        assert_eq!(message, "break");
+
+        let (duration, message) = parse_input("5 minutes thirty seconds go").unwrap();
+        assert_eq!(duration, 330);
+        assert_eq!(message, "go");
+    }
+
+    #[test]
+    fn test_number_words_multiple() {
+        let (duration, message) = parse_input("two hours five minutes reminder").unwrap();
+        assert_eq!(duration, 2 * 3600 + 5 * 60); // 7500 seconds
+        assert_eq!(message, "reminder");
+
+        let (duration, message) = parse_input("one hour one minute one second test").unwrap();
+        assert_eq!(duration, 3661);
+        assert_eq!(message, "test");
+    }
+
+    #[test]
+    fn test_number_words_case_insensitive() {
+        let (duration, message) = parse_input("One Minute Test").unwrap();
+        assert_eq!(duration, 60);
+        assert_eq!(message, "test");
+
+        let (duration, message) = parse_input("FIVE SECONDS GO").unwrap();
+        assert_eq!(duration, 5);
+        assert_eq!(message, "go");
     }
 }

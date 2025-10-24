@@ -2,9 +2,14 @@
 
 A simple, ergonomic CLI timer for taking breaks. Set natural language reminders with flexible syntax, get desktop notifications, and never miss a break again.
 
+Why break? Because typing "break 15m stretch" or "break go outside one hour 30mins" and having everything handled automatically is the quick and easy standard we should have.
+No need for watches, phones, calendars, sticky notes, guis, bloated apps, etc. No syntax, no manual conversions and no handling. No configs or setup. No learning curve.
+Type how you think and a notification pops up when you need it to. That's why.
+
 ## Features
 
-- **Natural time parsing**: `5m`, `1h30m`, `1:30:45`, or mix them: `1h 2:30 reminder`
+- **Natural time parsing**: `5m`, `1h30m`, `1:30:45`, `one minute`, or mix them all: `1h 2:30 five seconds reminder`
+- **Number word support**: Type `five minutes`, `twenty seconds`, `one hour` - fully case-insensitive
 - **Flexible flag placement**: Put flags anywhere - `break 5m coffee --urgent` or `break --urgent 5m coffee`
 - **Combined short flags**: Use `-usr` instead of `-u -s -r`
 - **Recurring timers**: Automatically repeat with `--recurring`
@@ -20,16 +25,30 @@ A simple, ergonomic CLI timer for taking breaks. Set natural language reminders 
 ### From Source
 
 ```bash
-git clone <repository-url>
+git clone <https://github.com/sqrew/break>
 cd break
 cargo build --release
 sudo cp target/release/break /usr/local/bin/
 ```
 
+### From crates.io
+
+```
+cargo install break
+```
+
+### Platform Support
+
+**Fully supported on:**
+- Linux (all distros)
+- macOS (10.8+)
+- Windows (10+)
+
 ### Dependencies
 
 - Rust 1.70+ (for building)
-- A notification daemon (most Linux desktops should have this by default)
+- Linux/macOS: notification daemon (most systems have this by default)
+- Windows: native notification system (built into Windows 10+)
 
 ## Usage
 
@@ -48,6 +67,11 @@ break 0:30 Quick reminder
 
 # Mixed formats
 break 1h 30m 2:15 Combined duration message
+
+# Number words (case-insensitive)
+break one minute thirty seconds reminder
+break Five Minutes Get Coffee
+break two hours five minutes lunch break
 ```
 
 ### Flags
@@ -126,7 +150,7 @@ break l
 break h
 
 # Remove a specific timer
-break rm 2
+break r 2
 
 # Clear all timers
 break c
@@ -136,6 +160,7 @@ break c
 
 1. **Parser**: Extracts duration and message from natural language input
    - Supports units: `s`, `sec`, `m`, `min`, `h`, `hr`, `hours`, etc.
+   - Supports number words: `one`, `five`, `twenty`, `fortyfive` (0-60)
    - Supports colon format: `5:30` (5 min 30 sec), `1:30:45` (1 hr 30 min 45 sec)
    - Flags can appear anywhere in the input
 
@@ -166,12 +191,17 @@ All of these work and can be mixed:
 5 minutes, 1 hour, 30 seconds
 1h30m, 2h15m30s
 
+# Number words (case-insensitive, 0-60)
+one minute, five seconds, twenty minutes
+two hours, fifteen minutes, fortyfive seconds
+
 # Colon format
 5:30        # 5 minutes 30 seconds
 1:30:45     # 1 hour 30 minutes 45 seconds
 
-# Mixed
-1h 2:30     # 1 hour + 2 minutes 30 seconds
+# Mixed (combine any formats!)
+1h 2:30 five seconds break    # 1 hour + 2m 30s + 5s = 3755 seconds
+one hour 30m reminder          # Mix number words with standard units
 ```
 
 ## Command Aliases
@@ -216,4 +246,4 @@ break status # Explicitly checks and restarts
 
 ## Contributing
 
-Contributions welcome! This tool follows the Unix philosophy: do one thing and do it well.
+Contributions welcome! This tool is trying to follow the Unix philosophy: do one thing and do it well.

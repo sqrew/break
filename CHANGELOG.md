@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Number word parsing support (0-60)
+  - Words like `one`, `five`, `twenty`, `fortyfive` now work in place of digits
+  - Fully case-insensitive: `One Minute`, `FIVE SECONDS`, `twenty minutes` all work
+  - Can be mixed with other formats: `one hour 30m five seconds reminder`
+  - 7 new tests covering basic, teens, tens, compounds, mixed usage
+
+### Changed
+- **Cross-platform daemon process checking** using sysinfo crate
+  - Windows: Now properly detects if daemon is running (previously just checked for PID file)
+  - macOS/Linux: Continues to work correctly
+  - Fixes stale PID file issues on all platforms
+- Removed platform-specific `ps` command usage in favor of cross-platform solution
+
 ## [0.1.0] - 2025-01-24
 
 ### Added

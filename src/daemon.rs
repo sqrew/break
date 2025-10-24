@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
+use sysinfo::System;
 
 fn pid_file_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let data_dir = dirs::data_dir().ok_or("Could not find data directory")?;
@@ -19,9 +20,8 @@ fn pid_file_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
 
 /// Checks if the daemon process is currently running.
 ///
-/// This function reads the PID file and verifies that the process is still active.
-/// On Unix systems, it uses the `ps` command to check if the process exists. On
-/// non-Unix systems, it assumes the daemon is running if the PID file exists.
+/// This function reads the PID file and verifies that the process is still active
+/// using cross-platform process checking via sysinfo. Works on Linux, macOS, and Windows.
 ///
 /// # Returns
 ///
@@ -33,7 +33,6 @@ fn pid_file_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
 /// Returns an error if:
 /// - The data directory cannot be accessed
 /// - File I/O operations fail
-/// - The process check command fails (Unix only)
 pub fn is_daemon_running() -> Result<bool, Box<dyn std::error::Error>> {
     let pid_file = pid_file_path()?;
 
@@ -48,22 +47,12 @@ pub fn is_daemon_running() -> Result<bool, Box<dyn std::error::Error>> {
         return Ok(false);
     }
 
-    // Check if process is actually running
-    #[cfg(unix)]
-    {
-        use std::process::Command;
-        let output = Command::new("ps")
-            .arg("-p")
-            .arg(pid.to_string())
-            .output()?;
-        Ok(output.status.success())
-    }
+    // Use sysinfo for cross-platform process checking
+    let mut system = System::new();
+    system.refresh_all();
+    let pid = sysinfo::Pid::from_u32(pid);
 
-    #[cfg(not(unix))]
-    {
-        // On non-Unix, just assume it's running if PID file exists
-        Ok(true)
-    }
+    Ok(system.process(pid).is_some())
 }
 
 /// Ensures the daemon is running, starting it if necessary.
@@ -108,25 +97,12 @@ pub fn start_daemon_process() -> Result<(), Box<dyn std::error::Error>> {
     let exe = std::env::current_exe()?;
 
     // Spawn daemon as a detached background process
-    #[cfg(unix)]
-    {
-        Command::new(exe)
-            .arg("--daemon-mode")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()?;
-    }
-
-    #[cfg(not(unix))]
-    {
-        Command::new(exe)
-            .arg("--daemon-mode")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()?;
-    }
+    Command::new(exe)
+        .arg("--daemon-mode")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
 
     Ok(())
 }
