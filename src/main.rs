@@ -1,8 +1,8 @@
 use clap::{Parser, Subcommand};
 use std::process;
 
-mod database;
 mod daemon;
+mod database;
 mod parser;
 
 use database::Database;
@@ -14,12 +14,21 @@ struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
 
-    /// Duration (e.g., "5m", "1h30m")
-    duration: Option<String>,
-
-    /// Timer message (remaining arguments will be joined)
+    /// Input mixing duration and message (e.g., "5m get coffee", "15mins 1h 20s take a break")
     #[arg(trailing_var_arg = true)]
-    message: Vec<String>,
+    input: Vec<String>,
+
+    /// Mark notification as urgent/critical
+    #[arg(long, short = 'u')]
+    urgent: bool,
+
+    /// Play sound with notification
+    #[arg(long, short = 's')]
+    sound: bool,
+
+    /// Make timer recurring (repeats after completion)
+    #[arg(long, short = 'r')]
+    recurring: bool,
 
     /// Run in daemon mode (internal use)
     #[arg(long, hide = true)]
@@ -60,21 +69,27 @@ fn main() {
         Some(Commands::Daemon) => start_daemon(),
         None => {
             // Default: add a timer
-            if let Some(duration) = cli.duration {
-                if cli.message.is_empty() {
-                    eprintln!("Error: Please provide a message");
-                    eprintln!("Usage: break <duration> <message>");
-                    eprintln!("Example: break 5m Tea is ready");
-                    process::exit(1);
-                }
-                let message = cli.message.join(" ");
-                add_timer(&duration, &message)
-            } else {
+            if cli.input.is_empty() {
                 eprintln!("Error: Please provide duration and message");
-                eprintln!("Usage: break <duration> <message>");
-                eprintln!("Example: break 5m Tea is ready");
+                eprintln!("Usage: break [FLAGS] <input with duration and message>");
+                eprintln!("Examples:");
+                eprintln!("  break 5m Tea is ready");
+                eprintln!("  break 15mins 1 hour 20s take a break");
+                eprintln!("  break --urgent 5m get coffee");
+                eprintln!("  break 5m get coffee --urgent");
+                eprintln!("  break --recurring --sound 1h stretch");
                 process::exit(1);
             }
+
+            // Extract flags from input if present
+            let (input_cleaned, urgent_flag, sound_flag, recurring_flag) = extract_flags_from_input(&cli.input);
+
+            // Combine with CLI flags (either source works)
+            let urgent = cli.urgent || urgent_flag;
+            let sound = cli.sound || sound_flag;
+            let recurring = cli.recurring || recurring_flag;
+
+            add_timer(&input_cleaned, urgent, sound, recurring)
         }
     };
 
@@ -84,15 +99,78 @@ fn main() {
     }
 }
 
-fn add_timer(duration_str: &str, message: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let duration_seconds = parser::parse_duration(duration_str)?;
+/// Extract flag arguments from input and return cleaned input plus flag states
+fn extract_flags_from_input(input: &[String]) -> (String, bool, bool, bool) {
+    let mut urgent = false;
+    let mut sound = false;
+    let mut recurring = false;
+    let mut cleaned_input = Vec::new();
+
+    for arg in input {
+        match arg.as_str() {
+            "--urgent" => urgent = true,
+            "--sound" => sound = true,
+            "--recurring" => recurring = true,
+            s if s.starts_with('-') && !s.starts_with("--") => {
+                // Handle short flags (single dash) including combined flags like -us
+                for ch in s.chars().skip(1) {
+                    match ch {
+                        'u' => urgent = true,
+                        's' => sound = true,
+                        'r' => recurring = true,
+                        _ => {
+                            // Unknown flag, treat whole arg as input
+                            cleaned_input.push(arg.clone());
+                            break;
+                        }
+                    }
+                }
+            }
+            _ => cleaned_input.push(arg.clone()),
+        }
+    }
+
+    (cleaned_input.join(" "), urgent, sound, recurring)
+}
+
+fn add_timer(
+    input: &str,
+    urgent: bool,
+    sound: bool,
+    recurring: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (duration_seconds, message) = parser::parse_input(input)?;
 
     let mut db = Database::load()?;
-    let timer = db.add_timer(message.to_string(), duration_seconds);
+    let timer = db.add_timer(message.clone(), duration_seconds, urgent, sound, recurring);
     db.save()?;
 
-    println!("Timer #{} set for {} ({} seconds)", timer.id, message, duration_seconds);
-    println!("Break will notify you at {}", timer.due_at.format(&time::format_description::well_known::Rfc3339)?);
+    print!(
+        "Timer #{} set for \"{}\" ({} seconds)",
+        timer.id, message, duration_seconds
+    );
+    if urgent || sound || recurring {
+        print!(" [");
+        let mut flags = Vec::new();
+        if urgent {
+            flags.push("urgent");
+        }
+        if sound {
+            flags.push("sound");
+        }
+        if recurring {
+            flags.push("recurring");
+        }
+        print!("{}", flags.join(", "));
+        print!("]");
+    }
+    println!();
+    println!(
+        "Break will notify you at {}",
+        timer
+            .due_at
+            .format(&time::format_description::well_known::Rfc3339)?
+    );
 
     // Ensure daemon is running
     daemon::ensure_daemon_running()?;
@@ -126,9 +204,43 @@ fn list_timers() -> Result<(), Box<dyn std::error::Error>> {
             if minutes > 0 || hours > 0 {
                 print!("{}m ", minutes);
             }
-            println!("{}s remaining", seconds);
+            print!("{}s remaining", seconds);
+
+            // Show flags
+            if timer.urgent || timer.sound || timer.recurring {
+                print!(" [");
+                let mut flags = Vec::new();
+                if timer.urgent {
+                    flags.push("urgent");
+                }
+                if timer.sound {
+                    flags.push("sound");
+                }
+                if timer.recurring {
+                    flags.push("recurring");
+                }
+                print!("{}", flags.join(", "));
+                print!("]");
+            }
+            println!();
         } else {
-            println!("  #{}: \"{}\" - EXPIRED", timer.id, timer.message);
+            print!("  #{}: \"{}\" - EXPIRED", timer.id, timer.message);
+            if timer.urgent || timer.sound || timer.recurring {
+                print!(" [");
+                let mut flags = Vec::new();
+                if timer.urgent {
+                    flags.push("urgent");
+                }
+                if timer.sound {
+                    flags.push("sound");
+                }
+                if timer.recurring {
+                    flags.push("recurring");
+                }
+                print!("{}", flags.join(", "));
+                print!("]");
+            }
+            println!();
         }
     }
 

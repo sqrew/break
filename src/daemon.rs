@@ -97,14 +97,34 @@ pub fn run_daemon() -> Result<(), Box<dyn std::error::Error>> {
         let expired = db.get_expired_timers();
 
         for timer in &expired {
-            // Send notification
-            let _ = Notification::new()
+            // Build notification with appropriate settings
+            let notification = Notification::new()
                 .summary("Break Timer")
                 .body(&timer.message)
-                .show();
+                .urgency(if timer.urgent {
+                    notify_rust::Urgency::Critical
+                } else {
+                    notify_rust::Urgency::Normal
+                })
+                .sound_name(if timer.sound {
+                    "message-new-instant"
+                } else {
+                    // Empty string means no sound
+                    ""
+                })
+                .finalize();
 
-            // Remove the expired timer
-            db.remove_timer(timer.id);
+            // Show notification
+            let _ = notification.show();
+
+            // Handle recurring vs one-time timers
+            if timer.recurring {
+                // Reset the timer for the next interval
+                db.reset_timer(timer.id);
+            } else {
+                // Remove the expired timer
+                db.remove_timer(timer.id);
+            }
         }
 
         if !expired.is_empty() {
@@ -116,8 +136,30 @@ pub fn run_daemon() -> Result<(), Box<dyn std::error::Error>> {
             break;
         }
 
-        // Sleep for 30 seconds before next check
-        thread::sleep(Duration::from_secs(30));
+        // Calculate sleep time until next timer
+        let now = time::OffsetDateTime::now_utc();
+        let next_timer = db.timers.iter()
+            .min_by_key(|t| t.due_at);
+
+        let sleep_duration = if let Some(next) = next_timer {
+            let time_until = next.due_at - now;
+            let seconds = time_until.whole_seconds();
+            if seconds > 0 {
+                // Sleep until just past the timer (add 1 second buffer)
+                Duration::from_secs((seconds + 1) as u64)
+            } else {
+                // Timer already expired, check immediately
+                Duration::from_secs(1)
+            }
+        } else {
+            // Fallback to 30 seconds if no timer found
+            Duration::from_secs(30)
+        };
+
+        // Cap sleep duration at 1 hour for safety
+        let sleep_duration = sleep_duration.min(Duration::from_secs(3600));
+
+        thread::sleep(sleep_duration);
     }
 
     // Clean up PID file

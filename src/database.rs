@@ -14,6 +14,12 @@ pub struct Timer {
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::timestamp")]
     pub due_at: OffsetDateTime,
+    #[serde(default)]
+    pub urgent: bool,
+    #[serde(default)]
+    pub sound: bool,
+    #[serde(default)]
+    pub recurring: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -54,7 +60,7 @@ impl Database {
         Ok(())
     }
 
-    pub fn add_timer(&mut self, message: String, duration_seconds: u64) -> Timer {
+    pub fn add_timer(&mut self, message: String, duration_seconds: u64, urgent: bool, sound: bool, recurring: bool) -> Timer {
         let now = OffsetDateTime::now_utc();
         let due_at = now + time::Duration::seconds(duration_seconds as i64);
 
@@ -65,11 +71,25 @@ impl Database {
             duration_seconds,
             created_at: now,
             due_at,
+            urgent,
+            sound,
+            recurring,
         };
 
         self.next_id += 1;
         self.timers.push(timer.clone());
         timer
+    }
+
+    pub fn reset_timer(&mut self, id: u32) -> Option<Timer> {
+        if let Some(timer) = self.timers.iter_mut().find(|t| t.id == id) {
+            let now = OffsetDateTime::now_utc();
+            timer.due_at = now + time::Duration::seconds(timer.duration_seconds as i64);
+            timer.created_at = now;
+            Some(timer.clone())
+        } else {
+            None
+        }
     }
 
     pub fn remove_timer(&mut self, id: u32) -> Option<Timer> {

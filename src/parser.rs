@@ -90,14 +90,85 @@ fn parse_unit(unit: &str) -> Result<u64, ParseError> {
     }
 }
 
-pub fn parse_duration(input: &str) -> Result<u64, ParseError> {
-    let tokens = tokenize(input)?;
+/// Parse colon-formatted time (h:m:s, m:s, or just s)
+/// Examples: "1:30:45" -> 5445, "5:30" -> 330, "45" -> 45
+fn parse_colon_time(s: &str) -> Result<u64, ParseError> {
+    let parts: Vec<&str> = s.split(':').collect();
 
-    if tokens.is_empty() {
-        return Err(ParseError("Empty duration".to_string()));
+    match parts.len() {
+        1 => {
+            // Just seconds (though this shouldn't have a colon)
+            let secs: u64 = parts[0].parse()
+                .map_err(|_| ParseError(format!("Invalid seconds: {}", parts[0])))?;
+            Ok(secs)
+        }
+        2 => {
+            // minutes:seconds
+            let mins: u64 = parts[0].parse()
+                .map_err(|_| ParseError(format!("Invalid minutes: {}", parts[0])))?;
+            let secs: u64 = parts[1].parse()
+                .map_err(|_| ParseError(format!("Invalid seconds: {}", parts[1])))?;
+            Ok(mins * 60 + secs)
+        }
+        3 => {
+            // hours:minutes:seconds
+            let hours: u64 = parts[0].parse()
+                .map_err(|_| ParseError(format!("Invalid hours: {}", parts[0])))?;
+            let mins: u64 = parts[1].parse()
+                .map_err(|_| ParseError(format!("Invalid minutes: {}", parts[1])))?;
+            let secs: u64 = parts[2].parse()
+                .map_err(|_| ParseError(format!("Invalid seconds: {}", parts[2])))?;
+            Ok(hours * 3600 + mins * 60 + secs)
+        }
+        _ => Err(ParseError(format!("Invalid time format: {}", s)))
+    }
+}
+
+/// Check if a string looks like a colon time format
+fn is_colon_time(s: &str) -> bool {
+    if !s.contains(':') {
+        return false;
     }
 
-    let mut total_seconds = 0u64;
+    // Must be all digits and colons
+    s.chars().all(|c| c.is_ascii_digit() || c == ':')
+}
+
+/// Parse input that mixes duration components with message text
+/// Returns (duration_in_seconds, message)
+/// Examples:
+///   "15mins 1 hour 20s take a break" -> (4520, "take a break")
+///   "1:30:45 coffee break" -> (5445, "coffee break")
+pub fn parse_input(input: &str) -> Result<(u64, String), ParseError> {
+    // First, scan for colon-formatted times
+    let words: Vec<&str> = input.split_whitespace().collect();
+    let mut colon_duration = 0u64;
+    let mut remaining_input = Vec::new();
+
+    for word in words {
+        if is_colon_time(word) {
+            colon_duration += parse_colon_time(word)?;
+        } else {
+            remaining_input.push(word);
+        }
+    }
+
+    // If we only had colon time and no other input, that's an error (no message)
+    if remaining_input.is_empty() && colon_duration > 0 {
+        return Err(ParseError("No message found in input".to_string()));
+    }
+
+    // Parse the remaining input for standard duration formats
+    let remaining_str = remaining_input.join(" ");
+    let tokens = tokenize(&remaining_str)?;
+
+    // Allow empty tokens if we got duration from colon format
+    if tokens.is_empty() && colon_duration == 0 {
+        return Err(ParseError("Empty input".to_string()));
+    }
+
+    let mut total_seconds = colon_duration; // Start with colon duration
+    let mut message_parts = Vec::new();
     let mut i = 0;
 
     while i < tokens.len() {
@@ -106,89 +177,245 @@ pub fn parse_duration(input: &str) -> Result<u64, ParseError> {
                 // Look for a unit after the number
                 if i + 1 < tokens.len() {
                     if let Token::Unit(unit) = &tokens[i + 1] {
-                        let multiplier = parse_unit(unit)?;
-                        total_seconds += num * multiplier;
+                        // Check if this is a valid time unit
+                        if let Ok(multiplier) = parse_unit(unit) {
+                            total_seconds += num * multiplier;
+                            i += 2;
+                            continue;
+                        }
+                        // Not a time unit, treat as message text
+                        message_parts.push(num.to_string());
+                        message_parts.push(unit.clone());
                         i += 2;
                         continue;
                     }
                 }
-                return Err(ParseError(format!(
-                    "Number {} must be followed by a unit (e.g., h, m, s, hour, minute, second)",
-                    num
-                )));
+                // No unit following, treat number as message text
+                message_parts.push(num.to_string());
+                i += 1;
             }
             Token::Unit(unit) => {
-                return Err(ParseError(format!(
-                    "Unit '{}' must be preceded by a number",
-                    unit
-                )));
+                // Standalone unit, treat as message text
+                message_parts.push(unit.clone());
+                i += 1;
             }
         }
     }
 
     if total_seconds == 0 {
-        return Err(ParseError("Duration must be greater than 0".to_string()));
+        return Err(ParseError("No valid duration found in input".to_string()));
     }
 
-    Ok(total_seconds)
+    let message = message_parts.join(" ");
+    if message.is_empty() {
+        return Err(ParseError("No message found in input".to_string()));
+    }
+
+    Ok((total_seconds, message))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // Basic duration parsing with simple units
     #[test]
-    fn test_parse_simple_short() {
-        assert_eq!(parse_duration("5m").unwrap(), 300);
-        assert_eq!(parse_duration("1h").unwrap(), 3600);
-        assert_eq!(parse_duration("30s").unwrap(), 30);
+    fn test_simple_short_units() {
+        let (duration, message) = parse_input("5m break").unwrap();
+        assert_eq!(duration, 300);
+        assert_eq!(message, "break");
+
+        let (duration, message) = parse_input("timer 1h").unwrap();
+        assert_eq!(duration, 3600);
+        assert_eq!(message, "timer");
+
+        let (duration, message) = parse_input("30s reminder").unwrap();
+        assert_eq!(duration, 30);
+        assert_eq!(message, "reminder");
     }
 
     #[test]
-    fn test_parse_simple_long() {
-        assert_eq!(parse_duration("5minutes").unwrap(), 300);
-        assert_eq!(parse_duration("1hour").unwrap(), 3600);
-        assert_eq!(parse_duration("30seconds").unwrap(), 30);
-        assert_eq!(parse_duration("2hrs").unwrap(), 7200);
-        assert_eq!(parse_duration("45mins").unwrap(), 2700);
+    fn test_simple_long_units() {
+        let (duration, _) = parse_input("5minutes break").unwrap();
+        assert_eq!(duration, 300);
+
+        let (duration, _) = parse_input("1hour timer").unwrap();
+        assert_eq!(duration, 3600);
+
+        let (duration, _) = parse_input("30seconds go").unwrap();
+        assert_eq!(duration, 30);
+
+        let (duration, _) = parse_input("2hrs meeting").unwrap();
+        assert_eq!(duration, 7200);
+
+        let (duration, _) = parse_input("45mins lunch").unwrap();
+        assert_eq!(duration, 2700);
+    }
+
+    // Combined durations
+    #[test]
+    fn test_combined_short_units() {
+        let (duration, _) = parse_input("1h30m break").unwrap();
+        assert_eq!(duration, 5400);
+
+        let (duration, _) = parse_input("2h15m30s meeting").unwrap();
+        assert_eq!(duration, 8130);
     }
 
     #[test]
-    fn test_parse_combined_short() {
-        assert_eq!(parse_duration("1h30m").unwrap(), 5400);
-        assert_eq!(parse_duration("2h15m30s").unwrap(), 8130);
+    fn test_combined_long_units() {
+        let (duration, _) = parse_input("1hour30minutes break").unwrap();
+        assert_eq!(duration, 5400);
+
+        let (duration, _) = parse_input("msg 2hours 15minutes 30seconds").unwrap();
+        assert_eq!(duration, 8130);
+
+        let (duration, _) = parse_input("1 hour 30 minutes break").unwrap();
+        assert_eq!(duration, 5400);
     }
 
     #[test]
-    fn test_parse_combined_long() {
-        assert_eq!(parse_duration("1hour30minutes").unwrap(), 5400);
-        assert_eq!(parse_duration("2hours 15minutes 30seconds").unwrap(), 8130);
-        assert_eq!(parse_duration("1 hour 30 minutes").unwrap(), 5400);
+    fn test_mixed_units() {
+        let (duration, _) = parse_input("1h 30min break").unwrap();
+        assert_eq!(duration, 5400);
+
+        let (duration, _) = parse_input("5 hours 30m timer").unwrap();
+        assert_eq!(duration, 19800);
+
+        let (duration, _) = parse_input("1hour30m break").unwrap();
+        assert_eq!(duration, 5400);
+
+        let (duration, _) = parse_input("msg 1second 5h 30min").unwrap();
+        assert_eq!(duration, 19801);
+    }
+
+    // Case insensitivity
+    #[test]
+    fn test_case_insensitive() {
+        let (duration, _) = parse_input("5M break").unwrap();
+        assert_eq!(duration, 300);
+
+        let (duration, _) = parse_input("1H timer").unwrap();
+        assert_eq!(duration, 3600);
+
+        let (duration, _) = parse_input("30S go").unwrap();
+        assert_eq!(duration, 30);
+
+        let (duration, _) = parse_input("5Minutes break").unwrap();
+        assert_eq!(duration, 300);
+
+        let (duration, _) = parse_input("1HOUR timer").unwrap();
+        assert_eq!(duration, 3600);
+    }
+
+    // Duration and message in various positions
+    #[test]
+    fn test_parse_input_mixed() {
+        let (duration, message) = parse_input("15mins 1 hour 20s take a break").unwrap();
+        assert_eq!(duration, 15 * 60 + 3600 + 20); // 4520 seconds
+        assert_eq!(message, "take a break");
     }
 
     #[test]
-    fn test_parse_mixed() {
-        assert_eq!(parse_duration("1h 30min").unwrap(), 5400);
-        assert_eq!(parse_duration("5 hours 30m").unwrap(), 19800);
-        assert_eq!(parse_duration("1hour30m").unwrap(), 5400);
-        assert_eq!(parse_duration("1second 5h 30min").unwrap(), 19801);
+    fn test_parse_input_duration_first() {
+        let (duration, message) = parse_input("5m coffee time").unwrap();
+        assert_eq!(duration, 300);
+        assert_eq!(message, "coffee time");
     }
 
     #[test]
-    fn test_parse_case_insensitive() {
-        assert_eq!(parse_duration("5M").unwrap(), 300);
-        assert_eq!(parse_duration("1H").unwrap(), 3600);
-        assert_eq!(parse_duration("30S").unwrap(), 30);
-        assert_eq!(parse_duration("5Minutes").unwrap(), 300);
-        assert_eq!(parse_duration("1HOUR").unwrap(), 3600);
+    fn test_parse_input_duration_last() {
+        let (duration, message) = parse_input("get coffee 5m").unwrap();
+        assert_eq!(duration, 300);
+        assert_eq!(message, "get coffee");
     }
 
     #[test]
-    fn test_parse_errors() {
-        assert!(parse_duration("").is_err());
-        assert!(parse_duration("5").is_err());
-        assert!(parse_duration("abc").is_err());
-        assert!(parse_duration("m5").is_err());
-        assert!(parse_duration("5x").is_err());
+    fn test_parse_input_multiple_durations() {
+        let (duration, message) = parse_input("wait 5m and then 10s more for tea").unwrap();
+        assert_eq!(duration, 5 * 60 + 10); // 310 seconds
+        assert_eq!(message, "wait and then more for tea");
+    }
+
+    #[test]
+    fn test_parse_input_message_with_numbers() {
+        let (duration, message) = parse_input("5m call 123 people").unwrap();
+        assert_eq!(duration, 300);
+        assert_eq!(message, "call 123 people");
+    }
+
+    #[test]
+    fn test_parse_input_complex() {
+        let (duration, message) = parse_input("1h 30m break for lunch at 12").unwrap();
+        assert_eq!(duration, 3600 + 1800); // 5400 seconds
+        assert_eq!(message, "break for lunch at 12");
+    }
+
+    // Error cases
+    #[test]
+    fn test_parse_input_errors() {
+        // No duration
+        assert!(parse_input("just a message").is_err());
+        // No message
+        assert!(parse_input("5m").is_err());
+        assert!(parse_input("1h 30m").is_err());
+        // Empty
+        assert!(parse_input("").is_err());
+        // Invalid unit
+        assert!(parse_input("5x message").is_err());
+    }
+
+    // Colon time format tests
+    #[test]
+    fn test_colon_format_minutes_seconds() {
+        let (duration, message) = parse_input("5:30 tea is ready").unwrap();
+        assert_eq!(duration, 5 * 60 + 30); // 330 seconds
+        assert_eq!(message, "tea is ready");
+    }
+
+    #[test]
+    fn test_colon_format_hours_minutes_seconds() {
+        let (duration, message) = parse_input("1:30:45 coffee break").unwrap();
+        assert_eq!(duration, 1 * 3600 + 30 * 60 + 45); // 5445 seconds
+        assert_eq!(message, "coffee break");
+    }
+
+    #[test]
+    fn test_colon_format_with_leading_zeros() {
+        let (duration, message) = parse_input("05:50:55 timer").unwrap();
+        assert_eq!(duration, 5 * 3600 + 50 * 60 + 55); // 21655 seconds
+        assert_eq!(message, "timer");
+    }
+
+    #[test]
+    fn test_colon_format_message_first() {
+        let (duration, message) = parse_input("reminder 0:30").unwrap();
+        assert_eq!(duration, 30); // 30 seconds
+        assert_eq!(message, "reminder");
+    }
+
+    #[test]
+    fn test_colon_format_mixed_with_standard() {
+        // Can combine colon format with standard duration units
+        let (duration, message) = parse_input("1:30 5m reminder").unwrap();
+        assert_eq!(duration, 90 + 300); // 390 seconds
+        assert_eq!(message, "reminder");
+    }
+
+    #[test]
+    fn test_colon_format_multiple() {
+        let (duration, message) = parse_input("1:00 2:30 break").unwrap();
+        assert_eq!(duration, 60 + 150); // 210 seconds
+        assert_eq!(message, "break");
+    }
+
+    #[test]
+    fn test_colon_format_errors() {
+        // No message
+        assert!(parse_input("5:30").is_err());
+        // Invalid format
+        assert!(parse_input("5:30:45:10 message").is_err());
+        // Non-numeric
+        assert!(parse_input("5:3a message").is_err());
     }
 }
