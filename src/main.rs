@@ -7,6 +7,10 @@ mod parser;
 
 use database::Database;
 
+// Time constants to avoid magic numbers
+const SECONDS_PER_MINUTE: i64 = 60;
+const SECONDS_PER_HOUR: i64 = 60 * SECONDS_PER_MINUTE; // 3600
+
 #[derive(Parser)]
 #[command(name = "breakrs")]
 #[command(about = "A simple CLI timer for breaks", long_about = None)]
@@ -38,16 +42,16 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// List all active timers
-    #[command(aliases = ["l", "li", "lis"])]
+    #[command(aliases = ["l", "li", "lis", "sh", "sho", "show", "dis", "display"])]
     List,
     /// Show recently completed timers
     #[command(aliases = ["h", "hi", "his", "hist", "histo", "histor"])]
     History,
     /// Remove a timer by ID
-    #[command(aliases = ["r", "rm", "rem", "remo", "remov"])]
+    #[command(aliases = ["r", "rm", "rem", "remo", "remov", "del", "dele", "delet", "delete"])]
     Remove { id: u32 },
     /// Clear all timers
-    #[command(aliases = ["c", "cl", "cle", "clea",])]
+    #[command(aliases = ["c", "cl", "cle", "clea"])]
     Clear,
     /// Clear history
     #[command(aliases = ["ch", "clh", "clear-h", "clear-hi", "clear-his", "clear-hist", "clear-histo", "clear-histor"])]
@@ -58,6 +62,85 @@ enum Commands {
     /// Manually start the daemon
     #[command(aliases = ["d", "da", "dae", "daem", "daemo"])]
     Daemon,
+}
+
+/// Formats seconds into a human-readable duration string.
+///
+/// Shows hours and minutes for all durations, and includes seconds only if the
+/// total duration is less than the specified threshold.
+///
+/// # Arguments
+///
+/// * `seconds` - Total number of seconds to format
+/// * `show_seconds_threshold_mins` - Only show seconds if duration < this many minutes
+///
+/// # Returns
+///
+/// A formatted string like "5h 30m 15s" or "2m 45s"
+///
+/// # Examples
+///
+/// ```ignore
+/// assert_eq!(format_duration(3665, 5), "1h 1m 5s");  // < 5 mins from hours, shows seconds
+/// assert_eq!(format_duration(360, 5), "6m");          // >= 5 mins, no seconds
+/// assert_eq!(format_duration(45, 5), "0m 45s");       // < 5 mins, shows seconds
+/// ```
+fn format_duration(seconds: i64, show_seconds_threshold_mins: i64) -> String {
+    let hours = seconds / SECONDS_PER_HOUR;
+    let minutes = (seconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE;
+    let secs = seconds % SECONDS_PER_MINUTE;
+
+    let mut parts = Vec::new();
+
+    if hours > 0 {
+        parts.push(format!("{}h", hours));
+    }
+    if minutes > 0 || hours > 0 {
+        parts.push(format!("{}m", minutes));
+    }
+    if hours == 0 && minutes < show_seconds_threshold_mins {
+        parts.push(format!("{}s", secs));
+    }
+
+    parts.join(" ")
+}
+
+/// Formats timer flags for display.
+///
+/// Returns a string containing the flags in brackets if any are set,
+/// or an empty string if no flags are active.
+///
+/// # Arguments
+///
+/// * `timer` - The timer whose flags should be formatted
+///
+/// # Returns
+///
+/// A formatted string like " [urgent, sound]" or "" if no flags are set
+///
+/// # Examples
+///
+/// ```ignore
+/// let timer = Timer { urgent: true, sound: false, recurring: false, ... };
+/// assert_eq!(format_flags(&timer), " [urgent]");
+/// ```
+fn format_flags(timer: &database::Timer) -> String {
+    if !timer.urgent && !timer.sound && !timer.recurring {
+        return String::new();
+    }
+
+    let mut flags = Vec::new();
+    if timer.urgent {
+        flags.push("urgent");
+    }
+    if timer.sound {
+        flags.push("sound");
+    }
+    if timer.recurring {
+        flags.push("recurring");
+    }
+
+    format!(" [{}]", flags.join(", "))
 }
 
 fn main() {
@@ -113,7 +196,31 @@ fn main() {
     }
 }
 
-/// Extract flag arguments from input and return cleaned input plus flag states
+/// Extracts flag arguments from mixed input and returns cleaned input plus flag states.
+///
+/// This function allows users to place flags anywhere in their input, including at the end.
+/// It recognizes both long form (`--urgent`) and short form (`-u`) flags, and supports
+/// combined short flags like `-usr` for `-u -s -r`.
+///
+/// # Arguments
+///
+/// * `input` - Slice of input strings that may contain flags mixed with duration/message
+///
+/// # Returns
+///
+/// Returns a tuple of:
+/// - `String` - The cleaned input with all flags removed, joined with spaces
+/// - `bool` - Whether `--urgent` or `-u` was found
+/// - `bool` - Whether `--sound` or `-s` was found
+/// - `bool` - Whether `--recurring` or `-r` was found
+///
+/// # Examples
+///
+/// ```ignore
+/// let (clean, u, s, r) = extract_flags_from_input(&["5m", "coffee", "--urgent"]);
+/// assert_eq!(clean, "5m coffee");
+/// assert!(u); // urgent flag found
+/// ```
 fn extract_flags_from_input(input: &[String]) -> (String, bool, bool, bool) {
     let mut urgent = false;
     let mut sound = false;
@@ -147,6 +254,30 @@ fn extract_flags_from_input(input: &[String]) -> (String, bool, bool, bool) {
     (cleaned_input.join(" "), urgent, sound, recurring)
 }
 
+/// Creates a new timer from user input with specified flags.
+///
+/// Parses the input string to extract duration and message, creates a timer in the
+/// database using a transaction for atomicity, displays confirmation to the user,
+/// and ensures the daemon is running to monitor the timer.
+///
+/// # Arguments
+///
+/// * `input` - The input string containing duration and message (e.g., "5m get coffee")
+/// * `urgent` - Whether to mark the notification as urgent/critical
+/// * `sound` - Whether to play a sound when the notification fires
+/// * `recurring` - Whether the timer should automatically repeat after completion
+///
+/// # Returns
+///
+/// Returns `Ok(())` on success, or an error if parsing fails, timer creation fails,
+/// or the daemon cannot be started.
+///
+/// # Examples
+///
+/// ```ignore
+/// add_timer("5m coffee break", true, false, false)?; // Urgent 5-minute timer
+/// add_timer("1h meeting", false, true, true)?;       // Recurring hourly timer with sound
+/// ```
 fn add_timer(
     input: &str,
     urgent: bool,
@@ -161,26 +292,13 @@ fn add_timer(
             .map_err(|e| format!("Failed to add timer: {}", e).into())
     })?;
 
-    print!(
-        "Timer #{} set for \"{}\" ({} seconds)",
-        timer.id, message, duration_seconds
+    println!(
+        "Timer #{} set for \"{}\" ({} seconds){}",
+        timer.id,
+        message,
+        duration_seconds,
+        format_flags(&timer)
     );
-    if urgent || sound || recurring {
-        print!(" [");
-        let mut flags = Vec::new();
-        if urgent {
-            flags.push("urgent");
-        }
-        if sound {
-            flags.push("sound");
-        }
-        if recurring {
-            flags.push("recurring");
-        }
-        print!("{}", flags.join(", "));
-        print!("]");
-    }
-    println!();
 
     // Show relative time (e.g., "in 5 minutes")
     let now = time::OffsetDateTime::now_utc();
@@ -188,21 +306,10 @@ fn add_timer(
     let seconds = duration_until.whole_seconds();
 
     if seconds > 0 {
-        let hours = seconds / 3600;
-        let minutes = (seconds % 3600) / 60;
-        let secs = seconds % 60;
-
-        print!("Break will notify you in ");
-        if hours > 0 {
-            print!("{}h ", hours);
-        }
-        if minutes > 0 || hours > 0 {
-            print!("{}m ", minutes);
-        }
-        if hours == 0 && minutes < 5 {
-            print!("{}s", secs);
-        }
-        println!();
+        println!(
+            "Break will notify you in {}",
+            format_duration(seconds, 5)
+        );
     } else {
         println!("Break notification is ready!");
     }
@@ -213,6 +320,16 @@ fn add_timer(
     Ok(())
 }
 
+/// Lists all active timers with their remaining time and flags.
+///
+/// Loads the timer database, displays each active timer with formatted time remaining,
+/// marks expired timers as "EXPIRED", shows any flags (urgent/sound/recurring), and
+/// ensures the daemon is running if there are active timers.
+///
+/// # Returns
+///
+/// Returns `Ok(())` on success, or an error if the database cannot be loaded or
+/// the daemon cannot be started.
 fn list_timers() -> Result<(), Box<dyn std::error::Error>> {
     let db = Database::load()?;
 
@@ -231,60 +348,39 @@ fn list_timers() -> Result<(), Box<dyn std::error::Error>> {
         let remaining_secs = remaining.whole_seconds();
 
         if remaining_secs > 0 {
-            let hours = remaining_secs / 3600;
-            let minutes = (remaining_secs % 3600) / 60;
-            let seconds = remaining_secs % 60;
-
-            print!("  #{}: \"{}\" - ", timer.id, timer.message);
-            if hours > 0 {
-                print!("{}h ", hours);
-            }
-            if minutes > 0 || hours > 0 {
-                print!("{}m ", minutes);
-            }
-            print!("{}s remaining", seconds);
-
-            // Show flags
-            if timer.urgent || timer.sound || timer.recurring {
-                print!(" [");
-                let mut flags = Vec::new();
-                if timer.urgent {
-                    flags.push("urgent");
-                }
-                if timer.sound {
-                    flags.push("sound");
-                }
-                if timer.recurring {
-                    flags.push("recurring");
-                }
-                print!("{}", flags.join(", "));
-                print!("]");
-            }
-            println!();
+            println!(
+                "  #{}: \"{}\" - {} remaining{}",
+                timer.id,
+                timer.message,
+                format_duration(remaining_secs, i64::MAX), // Always show seconds for active timers
+                format_flags(timer)
+            );
         } else {
-            print!("  #{}: \"{}\" - EXPIRED", timer.id, timer.message);
-            if timer.urgent || timer.sound || timer.recurring {
-                print!(" [");
-                let mut flags = Vec::new();
-                if timer.urgent {
-                    flags.push("urgent");
-                }
-                if timer.sound {
-                    flags.push("sound");
-                }
-                if timer.recurring {
-                    flags.push("recurring");
-                }
-                print!("{}", flags.join(", "));
-                print!("]");
-            }
-            println!();
+            println!(
+                "  #{}: \"{}\" - EXPIRED{}",
+                timer.id,
+                timer.message,
+                format_flags(timer)
+            );
         }
     }
 
     Ok(())
 }
 
+/// Removes a timer by its ID.
+///
+/// Uses a database transaction to atomically remove the specified timer.
+/// The timer is removed without adding it to history (unlike timer completion).
+///
+/// # Arguments
+///
+/// * `id` - The numeric ID of the timer to remove
+///
+/// # Returns
+///
+/// Returns `Ok(())` on success (whether or not the timer was found), or an error
+/// if the database transaction fails.
 fn remove_timer(id: u32) -> Result<(), Box<dyn std::error::Error>> {
     let timer_opt = Database::with_transaction(|db| Ok(db.remove_timer(id)))?;
 
@@ -297,6 +393,15 @@ fn remove_timer(id: u32) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Displays the history of recently completed timers.
+///
+/// Shows the last 20 completed timers (most recent first) with information about
+/// when they were completed and their flags. This allows users to see timers they
+/// may have missed if notifications were disabled.
+///
+/// # Returns
+///
+/// Returns `Ok(())` on success, or an error if the database cannot be loaded.
 fn show_history() -> Result<(), Box<dyn std::error::Error>> {
     let db = Database::load()?;
 
@@ -311,42 +416,32 @@ fn show_history() -> Result<(), Box<dyn std::error::Error>> {
         let elapsed = now - timer.due_at;
         let elapsed_secs = elapsed.whole_seconds().abs();
 
-        let hours = elapsed_secs / 3600;
-        let minutes = (elapsed_secs % 3600) / 60;
-
-        print!("  #{}: \"{}\" - completed ", timer.id, timer.message);
-        if hours > 0 {
-            print!("{}h ", hours);
-        }
-        if minutes > 0 || hours > 0 {
-            print!("{}m ", minutes);
+        let time_ago = if elapsed_secs < SECONDS_PER_MINUTE {
+            "< 1m".to_string()
         } else {
-            print!("< 1m ");
-        }
-        print!("ago");
+            format_duration(elapsed_secs, i64::MAX)
+        };
 
-        // Show flags
-        if timer.urgent || timer.sound || timer.recurring {
-            print!(" [");
-            let mut flags = Vec::new();
-            if timer.urgent {
-                flags.push("urgent");
-            }
-            if timer.sound {
-                flags.push("sound");
-            }
-            if timer.recurring {
-                flags.push("recurring");
-            }
-            print!("{}", flags.join(", "));
-            print!("]");
-        }
-        println!();
+        println!(
+            "  #{}: \"{}\" - completed {} ago{}",
+            timer.id,
+            timer.message,
+            time_ago,
+            format_flags(timer)
+        );
     }
 
     Ok(())
 }
 
+/// Clears all active timers from the database.
+///
+/// Uses a database transaction to atomically remove all timers. Timers are not
+/// added to history. Displays the count of cleared timers.
+///
+/// # Returns
+///
+/// Returns `Ok(())` on success, or an error if the database transaction fails.
 fn clear_timers() -> Result<(), Box<dyn std::error::Error>> {
     let count = Database::with_transaction(|db| {
         let count = db.timers.len();
@@ -359,6 +454,14 @@ fn clear_timers() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Clears the history of completed timers.
+///
+/// Uses a database transaction to atomically remove all entries from the history.
+/// Displays the count of cleared history entries. Does not affect active timers.
+///
+/// # Returns
+///
+/// Returns `Ok(())` on success, or an error if the database transaction fails.
 fn clear_history() -> Result<(), Box<dyn std::error::Error>> {
     let count = Database::with_transaction(|db| {
         let count = db.history.len();
@@ -371,6 +474,16 @@ fn clear_history() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Shows the status of the daemon and active timers.
+///
+/// Checks if the daemon is running and displays the count of active timers.
+/// If the daemon is not running but there are active timers, automatically
+/// restarts the daemon to ensure timers are monitored.
+///
+/// # Returns
+///
+/// Returns `Ok(())` on success, or an error if the database cannot be loaded
+/// or the daemon cannot be started.
 fn show_status() -> Result<(), Box<dyn std::error::Error>> {
     let db = Database::load()?;
     let timer_count = db.timers.len();
@@ -392,6 +505,15 @@ fn show_status() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Manually starts the daemon process.
+///
+/// Spawns a new daemon process to monitor timers. This is typically called
+/// automatically when timers are created, but can be manually invoked if needed.
+/// If the daemon is already running, this has no effect.
+///
+/// # Returns
+///
+/// Returns `Ok(())` on success, or an error if the daemon process cannot be spawned.
 fn start_daemon() -> Result<(), Box<dyn std::error::Error>> {
     daemon::start_daemon_process()?;
     println!("Daemon started");

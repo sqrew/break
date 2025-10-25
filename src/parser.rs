@@ -7,6 +7,10 @@
 use std::error::Error;
 use std::fmt;
 
+// Time constants to avoid magic numbers
+const SECONDS_PER_MINUTE: u64 = 60;
+const SECONDS_PER_HOUR: u64 = 60 * SECONDS_PER_MINUTE; // 3600
+
 #[derive(Debug)]
 pub struct ParseError(String);
 
@@ -43,16 +47,24 @@ fn parse_number_word(word: &str) -> Option<u64> {
         // 0-19
         "zero" => Some(0),
         "one" => Some(1),
+        "oen" => Some(1),
         "two" => Some(2),
+        "tow" => Some(2),
         "three" => Some(3),
+        "thre" => Some(3),
         "four" => Some(4),
+        "foru" => Some(4),
         "five" => Some(5),
+        "fiev" => Some(5),
         "six" => Some(6),
         "seven" => Some(7),
+        "sevne" => Some(7),
         "eight" => Some(8),
         "nine" => Some(9),
+        "nien" => Some(9),
         "ten" => Some(10),
         "eleven" => Some(11),
+        "elevne" => Some(11),
         "twelve" => Some(12),
         "thirteen" => Some(13),
         "fourteen" => Some(14),
@@ -65,6 +77,8 @@ fn parse_number_word(word: &str) -> Option<u64> {
         "twenty" => Some(20),
         "thirty" => Some(30),
         "forty" => Some(40),
+        // Common mispelling of forty
+        "fourty" => Some(40),
         "fifty" => Some(50),
         "sixty" => Some(60),
         // Common compounds (no space)
@@ -95,6 +109,15 @@ fn parse_number_word(word: &str) -> Option<u64> {
         "fortyseven" => Some(47),
         "fortyeight" => Some(48),
         "fortynine" => Some(49),
+        "fourtyone" => Some(41),
+        "fourtytwo" => Some(42),
+        "fourtythree" => Some(43),
+        "fourtyfour" => Some(44),
+        "fourtyfive" => Some(45),
+        "fourtysix" => Some(46),
+        "fourtyseven" => Some(47),
+        "fourtyeight" => Some(48),
+        "fourtynine" => Some(49),
         "fiftyone" => Some(51),
         "fiftytwo" => Some(52),
         "fiftythree" => Some(53),
@@ -104,10 +127,84 @@ fn parse_number_word(word: &str) -> Option<u64> {
         "fiftyseven" => Some(57),
         "fiftyeight" => Some(58),
         "fiftynine" => Some(59),
+        // Common compounds hyphenated
+        "twenty-one" => Some(21),
+        "twenty-two" => Some(22),
+        "twenty-three" => Some(23),
+        "twenty-four" => Some(24),
+        "twenty-five" => Some(25),
+        "twenty-six" => Some(26),
+        "twenty-seven" => Some(27),
+        "twenty-eight" => Some(28),
+        "twenty-nine" => Some(29),
+        "thirty-one" => Some(31),
+        "thirty-two" => Some(32),
+        "thirty-three" => Some(33),
+        "thirty-four" => Some(34),
+        "thirty-five" => Some(35),
+        "thirty-six" => Some(36),
+        "thirty-seven" => Some(37),
+        "thirty-eight" => Some(38),
+        "thirty-nine" => Some(39),
+        "forty-one" => Some(41),
+        "forty-two" => Some(42),
+        "forty-three" => Some(43),
+        "forty-four" => Some(44),
+        "forty-five" => Some(45),
+        "forty-six" => Some(46),
+        "forty-seven" => Some(47),
+        "forty-eight" => Some(48),
+        "forty-nine" => Some(49),
+        "fourty-one" => Some(41),
+        "fourty-two" => Some(42),
+        "fourty-three" => Some(43),
+        "fourty-four" => Some(44),
+        "fourty-five" => Some(45),
+        "fourty-six" => Some(46),
+        "fourty-seven" => Some(47),
+        "fourty-eight" => Some(48),
+        "fourty-nine" => Some(49),
+        "fifty-one" => Some(51),
+        "fifty-two" => Some(52),
+        "fifty-three" => Some(53),
+        "fifty-four" => Some(54),
+        "fifty-five" => Some(55),
+        "fifty-six" => Some(56),
+        "fifty-seven" => Some(57),
+        "fifty-eight" => Some(58),
+        "fifty-nine" => Some(59),
+
         _ => None,
     }
 }
 
+/// Tokenizes input string into a sequence of numbers and units.
+///
+/// This function breaks down a mixed input string (like "5m 30s reminder") into
+/// a sequence of tokens that can be processed by the parser. It handles:
+/// - Numeric digits (`5`, `30`) → `Token::Number`
+/// - Text words (`m`, `minutes`, `reminder`) → `Token::Unit`
+/// - Number words (`five`, `twenty`) → `Token::Number` (via `parse_number_word`)
+/// - Special characters (emoji, punctuation) → included in `Token::Unit`
+///
+/// The tokenizer is case-insensitive and whitespace-aware, automatically detecting
+/// transitions between numbers and text.
+///
+/// # Arguments
+///
+/// * `input` - The raw input string to tokenize
+///
+/// # Returns
+///
+/// Returns `Ok(Vec<Token>)` on success, or `Err(ParseError)` if a numeric token
+/// cannot be parsed as a valid u64.
+///
+/// # Examples
+///
+/// ```ignore
+/// let tokens = tokenize("5m 30s break")?;
+/// // Results in: [Number(5), Unit("m"), Number(30), Unit("s"), Unit("break")]
+/// ```
 fn tokenize(input: &str) -> Result<Vec<Token>, ParseError> {
     let input = input.trim().to_lowercase();
     let mut tokens = Vec::new();
@@ -189,14 +286,41 @@ fn tokenize(input: &str) -> Result<Vec<Token>, ParseError> {
     Ok(tokens)
 }
 
+/// Parses a time unit string into its equivalent number of seconds.
+///
+/// Recognizes common time unit abbreviations and full names for hours, minutes,
+/// and seconds. The parsing is case-insensitive (handled by caller via tokenization).
+///
+/// # Supported Units
+///
+/// - **Hours**: `h`, `hr`, `hrs`, `hour`, `hours` → 3600 seconds
+/// - **Minutes**: `m`, `min`, `mins`, `minute`, `minutes` → 60 seconds
+/// - **Seconds**: `s`, `sec`, `secs`, `second`, `seconds` → 1 second
+///
+/// # Arguments
+///
+/// * `unit` - The unit string to parse (should already be lowercase from tokenization)
+///
+/// # Returns
+///
+/// Returns `Ok(u64)` with the number of seconds for the unit, or `Err(ParseError)`
+/// if the unit is not recognized.
+///
+/// # Examples
+///
+/// ```ignore
+/// assert_eq!(parse_unit("m")?, 60);
+/// assert_eq!(parse_unit("hours")?, 3600);
+/// assert_eq!(parse_unit("sec")?, 1);
+/// ```
 fn parse_unit(unit: &str) -> Result<u64, ParseError> {
     match unit {
         // Hours
-        "h" | "hr" | "hrs" | "hour" | "hours" => Ok(3600),
+        "h" | "hr" | "hrs" | "hour" | "hours" | "horus" | "housr" => Ok(SECONDS_PER_HOUR),
         // Minutes
-        "m" | "min" | "mins" | "minute" | "minutes" => Ok(60),
+        "m" | "min" | "mins" | "minute" | "minutes" | "mintues" => Ok(SECONDS_PER_MINUTE),
         // Seconds
-        "s" | "sec" | "secs" | "second" | "seconds" => Ok(1),
+        "s" | "sec" | "secs" | "second" | "seconds" | "secodns" => Ok(1),
         _ => Err(ParseError(format!("Unknown time unit: '{}'", unit))),
     }
 }
@@ -222,7 +346,7 @@ fn parse_colon_time(s: &str) -> Result<u64, ParseError> {
             let secs: u64 = parts[1]
                 .parse()
                 .map_err(|_| ParseError(format!("Invalid seconds: {}", parts[1])))?;
-            Ok(mins * 60 + secs)
+            Ok(mins * SECONDS_PER_MINUTE + secs)
         }
         3 => {
             // hours:minutes:seconds
@@ -235,7 +359,7 @@ fn parse_colon_time(s: &str) -> Result<u64, ParseError> {
             let secs: u64 = parts[2]
                 .parse()
                 .map_err(|_| ParseError(format!("Invalid seconds: {}", parts[2])))?;
-            Ok(hours * 3600 + mins * 60 + secs)
+            Ok(hours * SECONDS_PER_HOUR + mins * SECONDS_PER_MINUTE + secs)
         }
         _ => Err(ParseError(format!("Invalid time format: {}", s))),
     }

@@ -13,6 +13,9 @@ use std::thread;
 use std::time::Duration;
 use sysinfo::System;
 
+// Time constants to avoid magic numbers
+const SECONDS_PER_HOUR: u64 = 3600;
+
 fn pid_file_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let data_dir = dirs::data_dir().ok_or("Could not find data directory")?;
     Ok(data_dir.join("break").join("daemon.pid"))
@@ -216,7 +219,7 @@ pub fn run_daemon() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         // Cap sleep duration at 1 hour for safety
-        let sleep_duration = sleep_duration.min(Duration::from_secs(3600));
+        let sleep_duration = sleep_duration.min(Duration::from_secs(SECONDS_PER_HOUR));
 
         thread::sleep(sleep_duration);
     }

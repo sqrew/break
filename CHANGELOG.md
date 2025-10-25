@@ -12,7 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Words like `one`, `five`, `twenty`, `fortyfive` now work in place of digits
   - Fully case-insensitive: `One Minute`, `FIVE SECONDS`, `twenty minutes` all work
   - Can be mixed with other formats: `one hour 30m five seconds reminder`
+  - Common spelling variations supported: `fourty`, hyphenated forms like `twenty-one`
   - 7 new tests covering basic, teens, tens, compounds, mixed usage
+- **Comprehensive documentation improvements**
+  - Added detailed doc comments to all parser helper functions (`tokenize`, `parse_unit`)
+  - Added doc comments to all 9 functions in main.rs with Arguments, Returns, and Examples sections
+  - Improved code maintainability and developer onboarding experience
+- **Database validation and limits**
+  - Automatic validation and cleanup of invalid timers on database load
+  - Filters out timers with empty messages, corrupted timestamps, or invalid durations
+  - Maximum limit of 100 active timers to prevent resource exhaustion
+  - Clear error messages when limits are exceeded
+  - 8 new comprehensive tests for validation logic and timer limits
 
 ### Changed
 - **Cross-platform daemon process checking** using sysinfo crate
@@ -20,6 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - macOS/Linux: Continues to work correctly
   - Fixes stale PID file issues on all platforms
 - Removed platform-specific `ps` command usage in favor of cross-platform solution
+- **Code deduplication and refactoring**
+  - Added `format_duration()` helper function to centralize time formatting logic
+  - Added `format_flags()` helper function to centralize flag display logic
+  - Refactored `add_timer()`, `list_timers()`, and `show_history()` to use helpers
+  - Eliminated ~60 lines of duplicated code, improving maintainability
+- **Replaced magic numbers with named constants**
+  - Added time constants (`SECONDS_PER_MINUTE`, `SECONDS_PER_HOUR`, `SECONDS_PER_DAY`, `SECONDS_PER_YEAR`)
+  - Replaced hardcoded values (60, 3600, 86400) throughout codebase
+  - Improved code readability and maintainability across all modules
+  - Makes time calculations self-documenting and easier to understand
 
 ## [0.1.0] - 2025-01-24
 

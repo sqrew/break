@@ -11,6 +11,13 @@ use std::path::PathBuf;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+// Time constants to avoid magic numbers
+const SECONDS_PER_MINUTE: u64 = 60;
+const SECONDS_PER_HOUR: u64 = 60 * SECONDS_PER_MINUTE; // 3600
+const SECONDS_PER_DAY: u64 = 24 * SECONDS_PER_HOUR; // 86400
+const SECONDS_PER_YEAR: u64 = 365 * SECONDS_PER_DAY; // 31,536,000
+const DAYS_PER_TWO_YEARS: i64 = 730;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Timer {
     pub uuid: Uuid,
@@ -29,6 +36,9 @@ pub struct Timer {
     pub recurring: bool,
 }
 
+/// Maximum number of active timers allowed to prevent resource exhaustion
+const MAX_TIMERS: usize = 100;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Database {
     pub timers: Vec<Timer>,
@@ -43,6 +53,59 @@ impl Database {
             timers: Vec::new(),
             history: Vec::new(),
             next_id: 1,
+        }
+    }
+
+    /// Validates a timer to ensure it has reasonable data.
+    ///
+    /// Filters out corrupted or invalid timers that could cause issues.
+    ///
+    /// # Arguments
+    ///
+    /// * `timer` - The timer to validate
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if the timer is valid, `false` if it should be filtered out.
+    fn is_valid_timer(timer: &Timer) -> bool {
+        let now = OffsetDateTime::now_utc();
+
+        // Filter out timers with empty messages
+        if timer.message.trim().is_empty() {
+            return false;
+        }
+
+        // Filter out timers with timestamps too far in the past (> 2 years old)
+        // This catches corrupted timestamps or very old stale timers
+        let two_years_ago = now - time::Duration::days(DAYS_PER_TWO_YEARS);
+        if timer.created_at < two_years_ago {
+            return false;
+        }
+
+        // Filter out timers with invalid durations (> 1 year)
+        if timer.duration_seconds > SECONDS_PER_YEAR {
+            return false;
+        }
+
+        // Filter out timers with due dates unreasonably far in the future (> 2 years)
+        let two_years_future = now + time::Duration::days(DAYS_PER_TWO_YEARS);
+        if timer.due_at > two_years_future {
+            return false;
+        }
+
+        true
+    }
+
+    /// Validates and cleans the database after loading.
+    ///
+    /// Removes any invalid timers and ensures the database is in a consistent state.
+    fn validate_and_clean(&mut self) {
+        let original_count = self.timers.len();
+        self.timers.retain(Self::is_valid_timer);
+
+        let removed = original_count - self.timers.len();
+        if removed > 0 {
+            eprintln!("Warning: Removed {} invalid timer(s) from database", removed);
         }
     }
 
@@ -78,13 +141,16 @@ impl Database {
         reader.read_to_string(&mut contents)?;
 
         // Parse JSON with better error messages
-        let db: Database = serde_json::from_str(&contents).map_err(|e| {
+        let mut db: Database = serde_json::from_str(&contents).map_err(|e| {
             format!(
                 "Database file is corrupted or invalid. Error: {}\nLocation: {}\nTo fix: Delete the file and restart.",
                 e,
                 path.display()
             )
         })?;
+
+        // Validate and clean the loaded database
+        db.validate_and_clean();
 
         FileExt::unlock(&file)?;
         Ok(db)
@@ -154,13 +220,17 @@ impl Database {
             let mut reader = std::io::BufReader::new(&file);
             reader.read_to_string(&mut contents)?;
 
-            serde_json::from_str(&contents).map_err(|e| {
+            let mut db: Database = serde_json::from_str(&contents).map_err(|e| {
                 format!(
                     "Database file is corrupted or invalid. Error: {}\nLocation: {}\nTo fix: Delete the file and restart.",
                     e,
                     path.display()
                 )
-            })?
+            })?;
+
+            // Validate and clean the loaded database
+            db.validate_and_clean();
+            db
         };
 
         // Run the transaction function
@@ -220,7 +290,9 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// Returns an error if the duration exceeds 1 year (31,536,000 seconds).
+    /// Returns an error if:
+    /// - The duration exceeds 1 year (31,536,000 seconds)
+    /// - The maximum number of active timers (100) has been reached
     pub fn add_timer(
         &mut self,
         message: String,
@@ -229,12 +301,19 @@ impl Database {
         sound: bool,
         recurring: bool,
     ) -> Result<Timer, String> {
+        // Check maximum timer limit
+        if self.timers.len() >= MAX_TIMERS {
+            return Err(format!(
+                "Maximum number of active timers ({}) reached. Please remove some timers first.",
+                MAX_TIMERS
+            ));
+        }
+
         // Validate duration is reasonable (max 1 year = 31,536,000 seconds)
-        const MAX_DURATION_SECONDS: u64 = 365 * 24 * 60 * 60; // 1 year
-        if duration_seconds > MAX_DURATION_SECONDS {
+        if duration_seconds > SECONDS_PER_YEAR {
             return Err(format!(
                 "Duration too large (max {} days)",
-                MAX_DURATION_SECONDS / 86400
+                SECONDS_PER_YEAR / SECONDS_PER_DAY
             ));
         }
 
@@ -420,16 +499,15 @@ mod tests {
     #[test]
     fn test_add_timer_max_duration() {
         let mut db = Database::new();
-        let max_duration = 365 * 24 * 60 * 60; // 1 year
 
         // Should succeed at max duration
-        let result = db.add_timer("Max".to_string(), max_duration, false, false, false);
+        let result = db.add_timer("Max".to_string(), SECONDS_PER_YEAR, false, false, false);
         assert!(result.is_ok());
 
         // Should fail above max duration
         let result = db.add_timer(
             "Too long".to_string(),
-            max_duration + 1,
+            SECONDS_PER_YEAR + 1,
             false,
             false,
             false,
@@ -562,7 +640,7 @@ mod tests {
             .unwrap();
 
         // Add a future timer
-        db.add_timer("Future".to_string(), 3600, false, false, false)
+        db.add_timer("Future".to_string(), SECONDS_PER_HOUR, false, false, false)
             .unwrap();
 
         // Small delay to ensure the 0-second timer is definitely expired
@@ -618,5 +696,193 @@ mod tests {
             .add_timer("Fourth".to_string(), 300, false, false, false)
             .unwrap();
         assert_eq!(timer4.id, 4);
+    }
+
+    #[test]
+    fn test_max_timers_limit() {
+        let mut db = Database::new();
+
+        // Add MAX_TIMERS (100) timers - should succeed
+        for i in 1..=100 {
+            let result = db.add_timer(
+                format!("Timer {}", i),
+                300,
+                false,
+                false,
+                false,
+            );
+            assert!(result.is_ok(), "Should be able to add timer {}", i);
+        }
+
+        assert_eq!(db.timers.len(), 100);
+
+        // Adding one more should fail
+        let result = db.add_timer(
+            "Timer 101".to_string(),
+            300,
+            false,
+            false,
+            false,
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Maximum number"));
+
+        // After removing one, should be able to add again
+        db.remove_timer(1);
+        let result = db.add_timer(
+            "Timer 101".to_string(),
+            300,
+            false,
+            false,
+            false,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_timer_empty_message() {
+        let now = OffsetDateTime::now_utc();
+        let timer = Timer {
+            uuid: Uuid::new_v4(),
+            id: 1,
+            message: "   ".to_string(), // Empty after trim
+            duration_seconds: 300,
+            created_at: now,
+            due_at: now + time::Duration::seconds(300),
+            urgent: false,
+            sound: false,
+            recurring: false,
+        };
+
+        assert!(!Database::is_valid_timer(&timer));
+    }
+
+    #[test]
+    fn test_validate_timer_old_timestamp() {
+        let now = OffsetDateTime::now_utc();
+        let three_years_ago = now - time::Duration::days(1095);
+
+        let timer = Timer {
+            uuid: Uuid::new_v4(),
+            id: 1,
+            message: "Old timer".to_string(),
+            duration_seconds: 300,
+            created_at: three_years_ago, // Too old
+            due_at: now + time::Duration::seconds(300),
+            urgent: false,
+            sound: false,
+            recurring: false,
+        };
+
+        assert!(!Database::is_valid_timer(&timer));
+    }
+
+    #[test]
+    fn test_validate_timer_excessive_duration() {
+        let now = OffsetDateTime::now_utc();
+        let timer = Timer {
+            uuid: Uuid::new_v4(),
+            id: 1,
+            message: "Long timer".to_string(),
+            duration_seconds: 500 * SECONDS_PER_DAY, // > 1 year
+            created_at: now,
+            due_at: now + time::Duration::days(500),
+            urgent: false,
+            sound: false,
+            recurring: false,
+        };
+
+        assert!(!Database::is_valid_timer(&timer));
+    }
+
+    #[test]
+    fn test_validate_timer_far_future() {
+        let now = OffsetDateTime::now_utc();
+        let three_years_future = now + time::Duration::days(1095);
+
+        let timer = Timer {
+            uuid: Uuid::new_v4(),
+            id: 1,
+            message: "Future timer".to_string(),
+            duration_seconds: 300,
+            created_at: now,
+            due_at: three_years_future, // Too far in future
+            urgent: false,
+            sound: false,
+            recurring: false,
+        };
+
+        assert!(!Database::is_valid_timer(&timer));
+    }
+
+    #[test]
+    fn test_validate_timer_valid() {
+        let now = OffsetDateTime::now_utc();
+        let timer = Timer {
+            uuid: Uuid::new_v4(),
+            id: 1,
+            message: "Valid timer".to_string(),
+            duration_seconds: 300,
+            created_at: now,
+            due_at: now + time::Duration::seconds(300),
+            urgent: false,
+            sound: false,
+            recurring: false,
+        };
+
+        assert!(Database::is_valid_timer(&timer));
+    }
+
+    #[test]
+    fn test_validate_and_clean() {
+        let mut db = Database::new();
+        let now = OffsetDateTime::now_utc();
+
+        // Add a valid timer
+        db.timers.push(Timer {
+            uuid: Uuid::new_v4(),
+            id: 1,
+            message: "Valid".to_string(),
+            duration_seconds: 300,
+            created_at: now,
+            due_at: now + time::Duration::seconds(300),
+            urgent: false,
+            sound: false,
+            recurring: false,
+        });
+
+        // Add an invalid timer (empty message)
+        db.timers.push(Timer {
+            uuid: Uuid::new_v4(),
+            id: 2,
+            message: "".to_string(),
+            duration_seconds: 300,
+            created_at: now,
+            due_at: now + time::Duration::seconds(300),
+            urgent: false,
+            sound: false,
+            recurring: false,
+        });
+
+        // Add another invalid timer (too old)
+        db.timers.push(Timer {
+            uuid: Uuid::new_v4(),
+            id: 3,
+            message: "Old".to_string(),
+            duration_seconds: 300,
+            created_at: now - time::Duration::days(1000),
+            due_at: now + time::Duration::seconds(300),
+            urgent: false,
+            sound: false,
+            recurring: false,
+        });
+
+        assert_eq!(db.timers.len(), 3);
+
+        db.validate_and_clean();
+
+        // Only the valid timer should remain
+        assert_eq!(db.timers.len(), 1);
+        assert_eq!(db.timers[0].message, "Valid");
     }
 }
