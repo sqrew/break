@@ -128,9 +128,16 @@ pub fn start_daemon_process() -> Result<(), Box<dyn std::error::Error>> {
 /// # Notification Behavior
 ///
 /// - **Title**: The user's timer message (for quick visibility)
-/// - **Urgency**: Critical if `--urgent` flag was set, normal otherwise
-/// - **Sound**: Plays "message-new-instant" if `--sound` flag was set
+/// - **Urgency**: Critical if `--urgent` flag was set (Linux only)
+/// - **Sound**: System notification sound if `--sound` flag was set
 /// - **Retry Logic**: Automatically retries once after 500ms if notification fails
+///
+/// # Platform Differences
+///
+/// Due to differences in system notification APIs:
+/// - **Linux**: Full support for urgency levels and sound
+/// - **macOS**: Basic notifications only (--urgent and --sound flags accepted but may not affect behavior)
+/// - **Windows**: Basic notifications only (--urgent and --sound flags accepted but may not affect behavior)
 ///
 /// # Timer Handling
 ///
@@ -160,21 +167,41 @@ pub fn run_daemon() -> Result<(), Box<dyn std::error::Error>> {
         for timer in &expired {
             // Build notification with appropriate settings
             // Use the timer message as the title for immediate visibility
-            let notification = Notification::new()
-                .summary(&timer.message)
-                .body("Break timer completed")
-                .urgency(if timer.urgent {
-                    notify_rust::Urgency::Critical
-                } else {
-                    notify_rust::Urgency::Normal
-                })
-                .sound_name(if timer.sound {
-                    "message-new-instant"
-                } else {
-                    // Empty string means no sound
-                    ""
-                })
-                .finalize();
+            // Platform-specific notification configuration
+
+            #[cfg(target_os = "linux")]
+            let notification = {
+                let mut n = Notification::new();
+                n.summary(&timer.message)
+                    .body("Break timer completed")
+                    .urgency(if timer.urgent {
+                        notify_rust::Urgency::Critical
+                    } else {
+                        notify_rust::Urgency::Normal
+                    });
+                if timer.sound {
+                    n.sound_name("message-new-instant");
+                }
+                n.finalize()
+            };
+
+            #[cfg(target_os = "macos")]
+            let notification = {
+                let mut n = Notification::new();
+                n.summary(&timer.message).body("Break timer completed");
+                // Note: Sound support on macOS may vary by notification backend
+                // The --sound flag is accepted but may not always produce audio
+                n.finalize()
+            };
+
+            #[cfg(target_os = "windows")]
+            let notification = {
+                let mut n = Notification::new();
+                n.summary(&timer.message).body("Break timer completed");
+                // Note: Sound support on Windows may vary by notification backend
+                // The --sound flag is accepted but may not always produce audio
+                n.finalize()
+            };
 
             // Show notification with retry on failure
             if let Err(e) = notification.show() {
