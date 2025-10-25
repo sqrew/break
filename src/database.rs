@@ -105,7 +105,10 @@ impl Database {
 
         let removed = original_count - self.timers.len();
         if removed > 0 {
-            eprintln!("Warning: Removed {} invalid timer(s) from database", removed);
+            eprintln!(
+                "Warning: Removed {} invalid timer(s) from database",
+                removed
+            );
         }
     }
 
@@ -704,38 +707,20 @@ mod tests {
 
         // Add MAX_TIMERS (100) timers - should succeed
         for i in 1..=100 {
-            let result = db.add_timer(
-                format!("Timer {}", i),
-                300,
-                false,
-                false,
-                false,
-            );
+            let result = db.add_timer(format!("Timer {}", i), 300, false, false, false);
             assert!(result.is_ok(), "Should be able to add timer {}", i);
         }
 
         assert_eq!(db.timers.len(), 100);
 
         // Adding one more should fail
-        let result = db.add_timer(
-            "Timer 101".to_string(),
-            300,
-            false,
-            false,
-            false,
-        );
+        let result = db.add_timer("Timer 101".to_string(), 300, false, false, false);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Maximum number"));
 
         // After removing one, should be able to add again
         db.remove_timer(1);
-        let result = db.add_timer(
-            "Timer 101".to_string(),
-            300,
-            false,
-            false,
-            false,
-        );
+        let result = db.add_timer("Timer 101".to_string(), 300, false, false, false);
         assert!(result.is_ok());
     }
 

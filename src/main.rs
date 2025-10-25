@@ -306,10 +306,7 @@ fn add_timer(
     let seconds = duration_until.whole_seconds();
 
     if seconds > 0 {
-        println!(
-            "Break will notify you in {}",
-            format_duration(seconds, 5)
-        );
+        println!("Break will notify you in {}", format_duration(seconds, 5));
     } else {
         println!("Break notification is ready!");
     }

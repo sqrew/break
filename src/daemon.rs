@@ -130,6 +130,7 @@ pub fn start_daemon_process() -> Result<(), Box<dyn std::error::Error>> {
 /// - **Title**: The user's timer message (for quick visibility)
 /// - **Urgency**: Critical if `--urgent` flag was set, normal otherwise
 /// - **Sound**: Plays "message-new-instant" if `--sound` flag was set
+/// - **Retry Logic**: Automatically retries once after 500ms if notification fails
 ///
 /// # Timer Handling
 ///
@@ -175,8 +176,25 @@ pub fn run_daemon() -> Result<(), Box<dyn std::error::Error>> {
                 })
                 .finalize();
 
-            // Show notification
-            let _ = notification.show();
+            // Show notification with retry on failure
+            if let Err(e) = notification.show() {
+                eprintln!(
+                    "Warning: Failed to show notification for '{}': {}",
+                    timer.message, e
+                );
+                eprintln!("Retrying notification after brief delay...");
+
+                // Wait briefly and retry once
+                thread::sleep(Duration::from_millis(500));
+
+                if let Err(e) = notification.show() {
+                    eprintln!(
+                        "Error: Failed to show notification after retry for '{}': {}",
+                        timer.message, e
+                    );
+                    eprintln!("Check that your system notification daemon is running.");
+                }
+            }
 
             // Handle recurring vs one-time timers
             if timer.recurring {
@@ -200,8 +218,7 @@ pub fn run_daemon() -> Result<(), Box<dyn std::error::Error>> {
 
         // Calculate sleep time until next timer
         let now = time::OffsetDateTime::now_utc();
-        let next_timer = db.timers.iter()
-            .min_by_key(|t| t.due_at);
+        let next_timer = db.timers.iter().min_by_key(|t| t.due_at);
 
         let sleep_duration = if let Some(next) = next_timer {
             let time_until = next.due_at - now;

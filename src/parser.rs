@@ -454,20 +454,20 @@ pub fn parse_input(input: &str) -> Result<(u64, String), ParseError> {
         match &tokens[i] {
             Token::Number(num) => {
                 // Look for a unit after the number
-                if i + 1 < tokens.len() {
-                    if let Token::Unit(unit) = &tokens[i + 1] {
-                        // Check if this is a valid time unit
-                        if let Ok(multiplier) = parse_unit(unit) {
-                            total_seconds += num * multiplier;
-                            i += 2;
-                            continue;
-                        }
-                        // Not a time unit, treat as message text
-                        message_parts.push(num.to_string());
-                        message_parts.push(unit.clone());
+                if i + 1 < tokens.len()
+                    && let Token::Unit(unit) = &tokens[i + 1]
+                {
+                    // Check if this is a valid time unit
+                    if let Ok(multiplier) = parse_unit(unit) {
+                        total_seconds += num * multiplier;
                         i += 2;
                         continue;
                     }
+                    // Not a time unit, treat as message text
+                    message_parts.push(num.to_string());
+                    message_parts.push(unit.clone());
+                    i += 2;
+                    continue;
                 }
                 // No unit following, treat number as message text
                 message_parts.push(num.to_string());
