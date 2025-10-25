@@ -655,7 +655,7 @@ mod tests {
     #[test]
     fn test_colon_format_hours_minutes_seconds() {
         let (duration, message) = parse_input("1:30:45 coffee break").unwrap();
-        assert_eq!(duration, 1 * 3600 + 30 * 60 + 45); // 5445 seconds
+        assert_eq!(duration, 3600 + 30 * 60 + 45); // 5445 seconds
         assert_eq!(message, "coffee break");
     }
 

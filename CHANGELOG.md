@@ -24,6 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Maximum limit of 100 active timers to prevent resource exhaustion
   - Clear error messages when limits are exceeded
   - 8 new comprehensive tests for validation logic and timer limits
+- **CI/CD Pipeline with GitHub Actions**
+  - Automated testing on Linux, macOS, and Windows for every push/PR
+  - Clippy linting and rustfmt formatting checks enforced in CI
+  - Security audit via cargo-audit for dependency vulnerabilities
+  - Automated release workflow that builds binaries for 5 platforms
+  - Creates GitHub releases with pre-built binaries on version tags
+- **CONTRIBUTING.md** - Comprehensive contribution guidelines
+  - Development workflow and testing procedures
+  - Code style and architectural guidelines
+  - Clear explanation of project philosophy (simplicity first)
 
 ### Changed
 - **Cross-platform daemon process checking** using sysinfo crate
@@ -41,6 +51,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Replaced hardcoded values (60, 3600, 86400) throughout codebase
   - Improved code readability and maintainability across all modules
   - Makes time calculations self-documenting and easier to understand
+- **Binary size optimization** - Reduced from 4.7MB to 1.6MB (66% reduction)
+  - Added optimized release profile with LTO and size optimizations
+  - Stripped debug symbols and enabled panic=abort
+  - Significantly faster downloads and less disk space usage
+- **Enhanced Cargo.toml metadata**
+  - Added README, homepage, and documentation links for better crates.io presentation
+  - Excluded unnecessary files from published package (.github/, .claude/, target/)
+  - Improved package metadata for better discoverability
+
+### Fixed
+- **Notification error handling** - Daemon now properly handles notification failures
+  - Added automatic retry logic (500ms delay, one retry attempt)
+  - Clear error messages printed to stderr when notifications fail
+  - Helpful troubleshooting suggestions for users
+- **Cross-platform notification API compatibility**
+  - Fixed compilation errors on Windows and macOS
+  - Platform-specific notification code: full features on Linux, basic on macOS/Windows
+  - Urgency levels supported on Linux only (gracefully ignored on other platforms)
+  - Sound support properly handled per platform
+  - Documentation updated to explain platform differences
+- **Parser code cleanup** - Fixed Clippy warnings for cleaner, more idiomatic code
 
 ## [0.1.0] - 2025-01-24
 

@@ -5,9 +5,19 @@ edition = "2024"
 authors = ["Nicholas Manson <nicholaspmanson@gmail.com>"]
 description = "A simple, ergonomic CLI timer for taking breaks"
 repository = "https://github.com/sqrew/breakrs"
+homepage = "https://github.com/sqrew/breakrs"
+documentation = "https://docs.rs/breakrs"
+readme = "README.md"
 license = "MIT"
 keywords = ["timer", "break", "reminder", "notification", "cli"]
 categories = ["command-line-utilities"]
+exclude = [
+    "target/",
+    ".github/",
+    ".claude/",
+    ".git/",
+    ".gitignore",
+]
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
@@ -19,3 +29,10 @@ serde_json = "1.0"
 sysinfo = "0.32"
 time = { version = "0.3", features = ["macros", "formatting", "serde"] }
 uuid = { version = "1.18.1", features = ["v4", "serde"] }
+
+[profile.release]
+strip = true        # Strip debug symbols from binary
+lto = true          # Link-time optimization for better performance and smaller size
+codegen-units = 1   # Compile crates one after another for better optimization
+opt-level = "z"     # Optimize for size
+panic = "abort"     # Smaller binary by not including unwinding code
