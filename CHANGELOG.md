@@ -34,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Development workflow and testing procedures
   - Code style and architectural guidelines
   - Clear explanation of project philosophy (simplicity first)
+- **Shell completions** - Auto-complete support for commands and flags
+  - Generate completions for bash, zsh, fish, and PowerShell
+  - Tab completion for commands: `breakrs l<TAB>` → `list`
+  - Tab completion for flags: `breakrs --u<TAB>` → `--urgent`
+  - Easy installation with `breakrs completions <shell>` command
+  - Improves discoverability and reduces typing
+  - README updated with installation instructions for all shells
 
 ### Changed
 - **Cross-platform daemon process checking** using sysinfo crate

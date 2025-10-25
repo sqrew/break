@@ -1,4 +1,6 @@
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{generate, Shell};
+use std::io;
 use std::process;
 
 mod daemon;
@@ -62,6 +64,9 @@ enum Commands {
     /// Manually start the daemon
     #[command(aliases = ["d", "da", "dae", "daem", "daemo"])]
     Daemon,
+    /// Generate shell completions (bash, zsh, fish, powershell)
+    #[command(hide = true)]
+    Completions { shell: Shell },
 }
 
 /// Formats seconds into a human-readable duration string.
@@ -163,6 +168,10 @@ fn main() {
         Some(Commands::ClearHistory) => clear_history(),
         Some(Commands::Status) => show_status(),
         Some(Commands::Daemon) => start_daemon(),
+        Some(Commands::Completions { shell }) => {
+            generate_completions(shell);
+            return;
+        }
         None => {
             // Default: add a timer
             if cli.input.is_empty() {
@@ -515,4 +524,31 @@ fn start_daemon() -> Result<(), Box<dyn std::error::Error>> {
     daemon::start_daemon_process()?;
     println!("Daemon started");
     Ok(())
+}
+
+/// Generates shell completion scripts for the specified shell.
+///
+/// This function outputs the completion script to stdout, which can be saved
+/// or sourced directly. Supports bash, zsh, fish, and PowerShell.
+///
+/// # Arguments
+///
+/// * `shell` - The shell type to generate completions for
+///
+/// # Examples
+///
+/// ```bash
+/// # Generate and install bash completions
+/// breakrs completions bash > ~/.local/share/bash-completion/completions/breakrs
+///
+/// # Generate and install zsh completions
+/// breakrs completions zsh > ~/.zsh/completion/_breakrs
+///
+/// # Generate and install fish completions
+/// breakrs completions fish > ~/.config/fish/completions/breakrs.fish
+/// ```
+fn generate_completions(shell: Shell) {
+    let mut cmd = Cli::command();
+    let bin_name = cmd.get_name().to_string();
+    generate(shell, &mut cmd, bin_name, &mut io::stdout());
 }

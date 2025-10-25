@@ -126,6 +126,30 @@ breakrs daemon
 breakrs d        # Short alias
 ```
 
+### Shell Completions
+
+Enable tab completion for commands and flags:
+
+```bash
+# Bash (add to ~/.bashrc or install to completion directory)
+breakrs completions bash > ~/.local/share/bash-completion/completions/breakrs
+
+# Zsh (add to ~/.zshrc or install to completion directory)
+breakrs completions zsh > ~/.zsh/completion/_breakrs
+# Then add to ~/.zshrc: fpath=(~/.zsh/completion $fpath)
+
+# Fish
+breakrs completions fish > ~/.config/fish/completions/breakrs.fish
+
+# PowerShell (add to your PowerShell profile)
+breakrs completions powershell >> $PROFILE
+```
+
+After installing, restart your shell or source the completion file. Now you can:
+- `breakrs l<TAB>` → completes to `list`
+- `breakrs --u<TAB>` → completes to `--urgent`
+- `breakrs <TAB><TAB>` → shows all available commands
+
 ### Examples
 
 ```bash
