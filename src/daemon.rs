@@ -100,11 +100,11 @@ pub fn start_daemon_process() -> Result<(), Box<dyn std::error::Error>> {
     let exe = std::env::current_exe()?;
 
     // Spawn daemon as a detached background process
+    // Note: stderr is not redirected so error messages are visible to the user
     Command::new(exe)
         .arg("--daemon-mode")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
         .spawn()?;
 
     Ok(())

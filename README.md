@@ -37,6 +37,19 @@ sudo cp target/release/breakrs /usr/local/bin/
 cargo install breakrs
 ```
 
+### Uninstall
+
+```bash
+# If installed via cargo
+cargo uninstall breakrs
+
+# If installed from source to /usr/local/bin
+sudo rm /usr/local/bin/breakrs
+
+# Optionally remove data directory
+rm -rf ~/.local/share/breakrs
+```
+
 ### Platform Support
 
 **Fully supported on:**
@@ -131,24 +144,62 @@ breakrs d        # Short alias
 Enable tab completion for commands and flags:
 
 ```bash
-# Bash (add to ~/.bashrc or install to completion directory)
+# Bash
+# Generate completion file
+mkdir -p ~/.local/share/bash-completion/completions
 breakrs completions bash > ~/.local/share/bash-completion/completions/breakrs
+# Then restart your shell or run: source ~/.bashrc
 
-# Zsh (add to ~/.zshrc or install to completion directory)
-breakrs completions zsh > ~/.zsh/completion/_breakrs
-# Then add to ~/.zshrc: fpath=(~/.zsh/completion $fpath)
+# Zsh
+# Generate completion file
+mkdir -p ~/.local/share/zsh/site-functions
+breakrs completions zsh > ~/.local/share/zsh/site-functions/_breakrs
+
+# Add to ~/.zshrc:
+fpath=(~/.local/share/zsh/site-functions $fpath)
+autoload -Uz compinit
+compinit
+
+# Then restart your shell or run: source ~/.zshrc
 
 # Fish
+# Generate completion file (auto-loaded by fish)
+mkdir -p ~/.config/fish/completions
 breakrs completions fish > ~/.config/fish/completions/breakrs.fish
+# Fish will auto-load completions on next shell start
 
-# PowerShell (add to your PowerShell profile)
+# PowerShell
+# Add to your PowerShell profile
 breakrs completions powershell >> $PROFILE
+# Then restart PowerShell or run: . $PROFILE
 ```
 
-After installing, restart your shell or source the completion file. Now you can:
+After installing, you can:
 - `breakrs l<TAB>` → completes to `list`
 - `breakrs --u<TAB>` → completes to `--urgent`
 - `breakrs <TAB><TAB>` → shows all available commands
+
+### Pro Tip: Shorter Command Alias
+
+Save typing by aliasing `breakrs` to `br`:
+
+```bash
+# Bash - add to ~/.bashrc
+alias br='breakrs'
+
+# Zsh - add to ~/.zshrc
+alias br='breakrs'
+
+# Fish - add to ~/.config/fish/config.fish
+alias br='breakrs'
+```
+
+After restarting your shell:
+```bash
+br 5m coffee          # Much shorter!
+br l                  # List timers
+br -u 10m meeting
+```
 
 ### Examples
 

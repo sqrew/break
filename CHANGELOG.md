@@ -79,6 +79,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Sound support properly handled per platform
   - Documentation updated to explain platform differences
 - **Parser code cleanup** - Fixed Clippy warnings for cleaner, more idiomatic code
+- **Daemon error visibility** - Error messages now appear in terminal
+  - Removed stderr redirect so daemon errors are visible to users
+  - Notification failures and other daemon issues now properly displayed
+  - Helps users debug system notification daemon problems
 
 ## [0.1.0] - 2025-01-24
 

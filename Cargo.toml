@@ -1,6 +1,6 @@
 [package]
 name = "breakrs"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 authors = ["Nicholas Manson <nicholaspmanson@gmail.com>"]
 description = "A simple, ergonomic CLI timer for taking breaks"
